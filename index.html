@@ -1,0 +1,1527 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#e8b400"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Mundial 2026"/>
+  <meta name="description" content="Tracker de predicciones Monte Carlo para el FIFA World Cup 2026. Modelo Elo + Poisson, 10,000 simulaciones."/>
+
+  <title>Mundial 2026 — Tracker &amp; Simulación</title>
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="./manifest.json"/>
+
+  <!-- iOS icons -->
+  <link rel="apple-touch-icon" href="./icon-192.png"/>
+
+  <!-- Favicon inline SVG -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='28'>⚽</text></svg>"/>
+
+  <!-- React 18 UMD -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+
+  <!-- Babel standalone (transpila JSX en el navegador sin build step) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    html, body { margin: 0; padding: 0; background: #07090b; }
+    #root { min-height: 100vh; }
+    /* Safe area para iPhone con notch -->
+    body { padding-top: env(safe-area-inset-top); }
+    /* Loading spinner -->
+    .hdr-tools {
+      display: flex; align-items: center; gap: 10px;
+      justify-content: center; margin-top: 8px; flex-wrap: wrap;
+    }
+    .saved-lbl {
+      font-size: 11px; color: rgba(82,183,136,0.8); letter-spacing: 0.5px;
+      animation: fadein 0.4s ease;
+    }
+    @keyframes fadein { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
+    .reset-btn {
+      font-size: 11px; padding: 4px 12px; border-radius: 12px;
+      border: 1px solid rgba(230,57,70,0.3); background: rgba(230,57,70,0.08);
+      color: rgba(230,57,70,0.7); cursor: pointer; letter-spacing: 0.5px; transition: all 0.2s;
+    }
+    .reset-btn:hover { background: rgba(230,57,70,0.18); color: #ef9a9a; }
+    #loading {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; min-height: 100vh;
+      font-family: Arial, sans-serif; color: #e8b400;
+      background: #07090b;
+    }
+    #loading .ball { font-size: 48px; animation: spin 2s linear infinite; }
+    #loading .txt { font-size: 14px; letter-spacing: 3px; margin-top: 16px;
+      text-transform: uppercase; opacity: .6; }
+    @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="ball">⚽</div>
+    <div class="txt">Cargando Mundial 2026...</div>
+  </div>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    /* ── Hooks desde global React (UMD) ── */
+    const { useState, useMemo, useCallback, useEffect, useRef } = React;
+
+
+/* ══════════════════════════════════════════════════════════
+   MUNDIAL 2026 — SIMULACIÓN + TRACKER INTEGRADO
+   Modelo: Elo adaptado + Poisson + Monte Carlo 10,000 iter.
+   Opta target: ESP 16.1% · FRA 13% · ING 11.2% · ARG 10.4%
+   EA Sports: España campeona vs. Inglaterra
+══════════════════════════════════════════════════════════ */
+
+// ── ELO RATINGS ──────────────────────────────────────────
+const ELO = {
+  "México":1760,"Corea del Sur":1715,"Chequia":1680,"Sudáfrica":1555,
+  "Suiza":1785,"Canadá":1720,"Bosnia":1625,"Qatar":1545,
+  "Brasil":1990,"Marruecos":1815,"Escocia":1655,"Haití":1430,
+  "Estados Unidos":1765,"Turquía":1705,"Paraguay":1625,"Australia":1680,
+  "Alemania":1975,"Ecuador":1700,"Costa de Marfil":1645,"Curazao":1450,
+  "Países Bajos":1945,"Japón":1795,"Suecia":1725,"Túnez":1600,
+  "Bélgica":1905,"Irán":1655,"Egipto":1645,"Nueva Zelanda":1520,
+  "España":2100,"Uruguay":1845,"Arabia Saudí":1590,"Cabo Verde":1500,
+  "Francia":2060,"Senegal":1785,"Noruega":1780,"Bolivia":1500,
+  "Argentina":2010,"Austria":1730,"Argelia":1655,"Jordania":1520,
+  "Portugal":1960,"Colombia":1845,"Uzbekistán":1540,"Jamaica":1480,
+  "Inglaterra":2020,"Croacia":1845,"Ghana":1645,"Panamá":1520,
+  "Escocia":1655,"Haití":1430,
+};
+const HOME = {"Estados Unidos":100,"México":80,"Canadá":65};
+const elo = t => (ELO[t]||1600)+(HOME[t]||0);
+
+const OPTA = {"España":16.1,"Francia":13.0,"Inglaterra":11.2,"Argentina":10.4,
+  "Brasil":8.8,"Alemania":7.5,"Portugal":6.9,"Países Bajos":5.2};
+
+const FLAG = {
+  "México":"🇲🇽","Corea del Sur":"🇰🇷","Chequia":"🇨🇿","Sudáfrica":"🇿🇦",
+  "Suiza":"🇨🇭","Canadá":"🇨🇦","Bosnia":"🇧🇦","Qatar":"🇶🇦",
+  "Brasil":"🇧🇷","Marruecos":"🇲🇦","Escocia":"🏴󠁧󠁢󠁳󠁣󠁴󠁿","Haití":"🇭🇹",
+  "Estados Unidos":"🇺🇸","Turquía":"🇹🇷","Paraguay":"🇵🇾","Australia":"🇦🇺",
+  "Alemania":"🇩🇪","Ecuador":"🇪🇨","Costa de Marfil":"🇨🇮","Curazao":"🇨🇼",
+  "Países Bajos":"🇳🇱","Japón":"🇯🇵","Suecia":"🇸🇪","Túnez":"🇹🇳",
+  "Bélgica":"🇧🇪","Irán":"🇮🇷","Egipto":"🇪🇬","Nueva Zelanda":"🇳🇿",
+  "España":"🇪🇸","Uruguay":"🇺🇾","Arabia Saudí":"🇸🇦","Cabo Verde":"🇨🇻",
+  "Francia":"🇫🇷","Senegal":"🇸🇳","Noruega":"🇳🇴","Bolivia":"🇧🇴",
+  "Argentina":"🇦🇷","Austria":"🇦🇹","Argelia":"🇩🇿","Jordania":"🇯🇴",
+  "Portugal":"🇵🇹","Colombia":"🇨🇴","Uzbekistán":"🇺🇿","Jamaica":"🇯🇲",
+  "Inglaterra":"🏴󠁧󠁢󠁥󠁮󠁧󠁿","Croacia":"🇭🇷","Ghana":"🇬🇭","Panamá":"🇵🇦",
+};
+const f = n => FLAG[n]||"⬜";
+
+// ── GRUPOS ────────────────────────────────────────────────
+const GRUPOS = {
+  A:["México","Corea del Sur","Chequia","Sudáfrica"],
+  B:["Suiza","Canadá","Bosnia","Qatar"],
+  C:["Brasil","Marruecos","Escocia","Haití"],
+  D:["Estados Unidos","Turquía","Paraguay","Australia"],
+  E:["Alemania","Ecuador","Costa de Marfil","Curazao"],
+  F:["Países Bajos","Japón","Suecia","Túnez"],
+  G:["Bélgica","Irán","Egipto","Nueva Zelanda"],
+  H:["España","Uruguay","Arabia Saudí","Cabo Verde"],
+  I:["Francia","Senegal","Noruega","Bolivia"],
+  J:["Argentina","Austria","Argelia","Jordania"],
+  K:["Portugal","Colombia","Uzbekistán","Jamaica"],
+  L:["Inglaterra","Croacia","Ghana","Panamá"],
+};
+const LETTERS = Object.keys(GRUPOS);
+const PAIRS = [[0,3],[1,2],[0,1],[2,3],[0,2],[1,3]];
+const JORNADA = [1,1,2,2,3,3];
+
+// ── BRACKET OFICIAL FIFA ──────────────────────────────────
+const B3_POOLS = {
+  M74:"ABCDF",M77:"CDFGH",M79:"CEFHI",
+  M80:"EHIJK",M81:"BEFIJ",M82:"AEHIJ",M85:"EFGIJ",M87:"DEIJL"
+};
+const R32 = [
+  {id:"M73",date:"28 jun",venue:"SoFi Stad. LA",       label:"2°A vs 2°B",a:{t:"g",g:"A",p:2},b:{t:"g",g:"B",p:2}},
+  {id:"M74",date:"29 jun",venue:"Gillette, Boston",    label:"1°E vs 3°*",a:{t:"g",g:"E",p:1},b:{t:"b3"}},
+  {id:"M75",date:"29 jun",venue:"BBVA, Monterrey",     label:"1°F vs 2°C",a:{t:"g",g:"F",p:1},b:{t:"g",g:"C",p:2}},
+  {id:"M76",date:"29 jun",venue:"NRG, Houston",        label:"1°C vs 2°F",a:{t:"g",g:"C",p:1},b:{t:"g",g:"F",p:2}},
+  {id:"M77",date:"30 jun",venue:"MetLife, N.Jersey",   label:"1°I vs 3°*",a:{t:"g",g:"I",p:1},b:{t:"b3"}},
+  {id:"M78",date:"30 jun",venue:"AT&T, Dallas",        label:"2°E vs 2°I",a:{t:"g",g:"E",p:2},b:{t:"g",g:"I",p:2}},
+  {id:"M79",date:"30 jun",venue:"Azteca, CDMX",        label:"1°A vs 3°*",a:{t:"g",g:"A",p:1},b:{t:"b3"}},
+  {id:"M80",date:"1 jul", venue:"Merc-Benz, Atlanta",  label:"1°L vs 3°*",a:{t:"g",g:"L",p:1},b:{t:"b3"}},
+  {id:"M81",date:"1 jul", venue:"Levi's, S.Clara",     label:"1°D vs 3°*",a:{t:"g",g:"D",p:1},b:{t:"b3"}},
+  {id:"M82",date:"1 jul", venue:"Lumen Field, Seattle",label:"1°G vs 3°*",a:{t:"g",g:"G",p:1},b:{t:"b3"}},
+  {id:"M83",date:"2 jul", venue:"BMO, Toronto",        label:"2°K vs 2°L",a:{t:"g",g:"K",p:2},b:{t:"g",g:"L",p:2}},
+  {id:"M84",date:"2 jul", venue:"SoFi Stad. LA",       label:"1°H vs 2°J",a:{t:"g",g:"H",p:1},b:{t:"g",g:"J",p:2}},
+  {id:"M85",date:"2 jul", venue:"BC Place, Vancouver", label:"1°B vs 3°*",a:{t:"g",g:"B",p:1},b:{t:"b3"}},
+  {id:"M86",date:"3 jul", venue:"Hard Rock, Miami",    label:"1°J vs 2°H",a:{t:"g",g:"J",p:1},b:{t:"g",g:"H",p:2}},
+  {id:"M87",date:"3 jul", venue:"Arrowhead, KC",       label:"1°K vs 3°*",a:{t:"g",g:"K",p:1},b:{t:"b3"}},
+  {id:"M88",date:"3 jul", venue:"AT&T, Dallas",        label:"2°D vs 2°G",a:{t:"g",g:"D",p:2},b:{t:"g",g:"G",p:2}},
+];
+const R16 = [
+  {id:"M89",date:"4 jul", venue:"Lincoln, Filadelfia",label:"W74 vs W77",a:"M74",b:"M77"},
+  {id:"M90",date:"4 jul", venue:"NRG, Houston",       label:"W73 vs W75",a:"M73",b:"M75"},
+  {id:"M91",date:"5 jul", venue:"MetLife, N.Jersey",  label:"W76 vs W78",a:"M76",b:"M78"},
+  {id:"M92",date:"5 jul", venue:"Azteca, CDMX",       label:"W79 vs W80",a:"M79",b:"M80"},
+  {id:"M93",date:"6 jul", venue:"AT&T, Dallas",       label:"W83 vs W84",a:"M83",b:"M84"},
+  {id:"M94",date:"6 jul", venue:"Lumen, Seattle",     label:"W81 vs W82",a:"M81",b:"M82"},
+  {id:"M95",date:"7 jul", venue:"Merc-Benz, Atlanta", label:"W86 vs W88",a:"M86",b:"M88"},
+  {id:"M96",date:"7 jul", venue:"BC Place, Vancouver",label:"W85 vs W87",a:"M85",b:"M87"},
+];
+const QF = [
+  {id:"M97", date:"9 jul", venue:"Gillette, Boston",  label:"QF1: W89 vs W90",a:"M89",b:"M90"},
+  {id:"M98", date:"10 jul",venue:"SoFi Stad. LA",     label:"QF2: W93 vs W94",a:"M93",b:"M94"},
+  {id:"M99", date:"11 jul",venue:"Hard Rock, Miami",  label:"QF3: W91 vs W92",a:"M91",b:"M92"},
+  {id:"M100",date:"11 jul",venue:"Arrowhead, KC",     label:"QF4: W95 vs W96",a:"M95",b:"M96"},
+];
+const SF = [
+  {id:"M101",date:"14 jul",venue:"AT&T, Dallas",         label:"SF1: W97 vs W98", a:"M97",b:"M98"},
+  {id:"M102",date:"15 jul",venue:"Merc-Benz, Atlanta",   label:"SF2: W99 vs W100",a:"M99",b:"M100"},
+];
+const THIRD = {id:"M103",date:"18 jul",venue:"Hard Rock, Miami",  label:"3° Lugar: L101 vs L102",a:"M101",b:"M102",isLoser:true};
+const FINAL  = {id:"M104",date:"19 jul",venue:"MetLife Stadium, N.Jersey",label:"🏆 GRAN FINAL",a:"M101",b:"M102"};
+const ALL_KO = [...R32,...R16,...QF,...SF,THIRD,FINAL];
+
+/* ══════════════ MOTOR DE SIMULACIÓN ══════════════ */
+function poisson(l) {
+  if(l<=0) return 0;
+  const L=Math.exp(-Math.min(l,20));
+  let k=0,p=1; do{k++;p*=Math.random();}while(p>L&&k<20); return k-1;
+}
+function simGoals(eA,eB){
+  return[poisson(Math.exp(0.223+(eA-eB)/800)),poisson(Math.exp(0.223+(eB-eA)/800))];
+}
+function simKO(tA,tB){
+  const eA=elo(tA),eB=elo(tB);
+  let[a,b]=simGoals(eA,eB);
+  if(a!==b) return a>b?tA:tB;
+  const[ea,eb]=[poisson(Math.exp(0.223+(eA-eB)/800)/3),poisson(Math.exp(0.223+(eB-eA)/800)/3)];
+  if(ea!==eb) return(a+ea)>(b+eb)?tA:tB;
+  return Math.random()<0.5+0.04*Math.tanh((eA-eB)/300)?tA:tB;
+}
+function sortSt(teams,s){
+  return[...teams].sort((a,b)=>{
+    const pd=(s[b].v*3+s[b].e)-(s[a].v*3+s[a].e); if(pd)return pd;
+    const dd=(s[b].gf-s[b].gc)-(s[a].gf-s[a].gc); if(dd)return dd;
+    return s[b].gf-s[a].gf;
+  });
+}
+function simGroup(g){
+  const ts=GRUPOS[g],s={};
+  ts.forEach(t=>{s[t]={v:0,e:0,d:0,gf:0,gc:0};});
+  PAIRS.forEach(([i,j])=>{
+    const[gA,gB]=simGoals(elo(ts[i]),elo(ts[j]));
+    s[ts[i]].gf+=gA;s[ts[i]].gc+=gB;s[ts[j]].gf+=gB;s[ts[j]].gc+=gA;
+    if(gA>gB){s[ts[i]].v++;s[ts[j]].d++;}
+    else if(gB>gA){s[ts[j]].v++;s[ts[i]].d++;}
+    else{s[ts[i]].e++;s[ts[j]].e++;}
+  });
+  return sortSt(ts,s).map(t=>({name:t,...s[t],pts:s[t].v*3+s[t].e,dg:s[t].gf-s[t].gc}));
+}
+function assignB3(best8){
+  const slots=[
+    {id:"M80",pool:"EHIJK"},{id:"M87",pool:"DEIJL"},{id:"M74",pool:"ABCDF"},
+    {id:"M82",pool:"AEHIJ"},{id:"M77",pool:"CDFGH"},{id:"M81",pool:"BEFIJ"},
+    {id:"M79",pool:"CEFHI"},{id:"M85",pool:"EFGIJ"},
+  ];
+  const used=new Set(),out={};
+  slots.forEach(({id,pool})=>{
+    const m=best8.find(t=>pool.includes(t.g)&&!used.has(t.g));
+    if(m){out[id]=m.name;used.add(m.g);}
+    else{const fb=best8.find(t=>!used.has(t.g));if(fb){out[id]=fb.name;used.add(fb.g);}}
+  });
+  return out;
+}
+function getBest3(gStand){
+  return Object.entries(gStand)
+    .map(([g,st])=>({g,name:st[2]?.name||"?",pts:st[2]?.pts||0,dg:st[2]?.dg||0,gf:st[2]?.gf||0}))
+    .sort((a,b)=>b.pts-a.pts||b.dg-a.dg||b.gf-a.gf).slice(0,8);
+}
+
+function runOne(groupPos){
+  const gS={};
+  for(const g of LETTERS){
+    gS[g]=simGroup(g);
+    gS[g].forEach((t,i)=>{
+      if(!groupPos[g]) groupPos[g]={};
+      if(!groupPos[g][t.name]) groupPos[g][t.name]=[0,0,0,0];
+      groupPos[g][t.name][i]++;
+    });
+  }
+  const qual={},b3=assignB3(getBest3(gS));
+  LETTERS.forEach(g=>{qual[`1${g}`]=gS[g][0]?.name;qual[`2${g}`]=gS[g][1]?.name;});
+  const W={};
+  function slotTeam(slot,matchId){
+    if(slot.t==="g") return qual[`${slot.p}${slot.g}`]||"?";
+    if(slot.t==="b3") return b3[matchId]||"?";
+    return W[slot]||"?";
+  }
+  R32.forEach(m=>{const a=slotTeam(m.a,m.id),b=slotTeam(m.b,m.id);W[m.id]=simKO(a,b);});
+  [...R16,...QF,...SF].forEach(m=>{W[m.id]=simKO(W[m.a]||"?",W[m.b]||"?");});
+  const champ=simKO(W.M101||"?",W.M102||"?");
+  return{champ,finals:[W.M101,W.M102],semis:[W.M97,W.M98,W.M99,W.M100],r8:QF.map(m=>[W[m.a],W[m.b]]).flat()};
+}
+
+/* ══════════════ DERIVAR BRACKET PREDICHO ══════════════ */
+function buildPredStandings(groupPos){
+  const out={};
+  for(const g of LETTERS){
+    const gp=groupPos[g]||{};
+    const teams=[...GRUPOS[g]];
+    const assigned=[],result=[];
+    for(let pos=0;pos<4;pos++){
+      const best=teams.filter(t=>!assigned.includes(t))
+        .sort((a,b)=>(gp[b]?.[pos]||0)-(gp[a]?.[pos]||0))[0];
+      if(best){result.push(best);assigned.push(best);}
+    }
+    out[g]=result;
+  }
+  return out;
+}
+
+// Expected score from Elo
+function predScore(tA,tB){
+  const lA=Math.exp(0.223+(elo(tA)-elo(tB))/800);
+  const lB=Math.exp(0.223+(elo(tB)-elo(tA))/800);
+  return[Math.round(lA),Math.round(lB)];
+}
+// Win prob (for display)
+function winProb(tA,tB){
+  const d=elo(tA)-elo(tB);
+  const pD=0.25/(1+0.0015*d*d);
+  const pA=(1-pD)/(1+Math.pow(10,-d/400));
+  return{win:Math.round(pA*100),draw:Math.round(pD*100),lose:Math.round((1-pA-pD)*100)};
+}
+
+function buildKOBracket(predStandings, b3assign){
+  const W={};
+  function resolve(slot,id){
+    if(slot.t==="g") return predStandings[slot.g]?.[slot.p-1]||"?";
+    if(slot.t==="b3") return b3assign[id]||"?";
+    return W[slot]||"?";
+  }
+  R32.forEach(m=>{
+    const a=resolve(m.a,m.id),b=resolve(m.b,m.id);
+    W[m.id]=elo(a)>=elo(b)?a:b;
+  });
+  [...R16,...QF,...SF].forEach(m=>{
+    const a=W[m.a]||"?",b=W[m.b]||"?";
+    W[m.id]=elo(a)>=elo(b)?a:b;
+  });
+  W.M104W=elo(W.M101||"?")>=elo(W.M102||"?")?W.M101:W.M102;
+  W.M103a=W.M101; W.M103b=W.M102; // losers shown in 3rd
+  return W;
+}
+
+/* ══════════════ GRUPO STANDINGS (actual results) ══════════════ */
+function computeStandings(g,actualScores){
+  const teams=GRUPOS[g],s={};
+  teams.forEach(t=>{s[t]={v:0,e:0,d:0,gf:0,gc:0};});
+  PAIRS.forEach(([i,j],mi)=>{
+    const sc=actualScores[`${g}_${mi}`];
+    if(!sc||sc[0]===null||sc[1]===null) return;
+    const[a,b]=[sc[0],sc[1]];
+    s[teams[i]].gf+=a;s[teams[i]].gc+=b;s[teams[j]].gf+=b;s[teams[j]].gc+=a;
+    if(a>b){s[teams[i]].v++;s[teams[j]].d++;}
+    else if(b>a){s[teams[j]].v++;s[teams[i]].d++;}
+    else{s[teams[i]].e++;s[teams[j]].e++;}
+  });
+  const sorted=sortSt(teams,s);
+  return sorted.map(t=>({name:t,...s[t],pts:s[t].v*3+s[t].e,dg:s[t].gf-s[t].gc,pj:s[t].v+s[t].e+s[t].d}));
+}
+
+// Determine team in KO slot from actual standings
+function resolveActualTeam(slot,matchId,actualStandings,koActual,koWinners){
+  if(slot.t==="g"){
+    const st=actualStandings[slot.g];
+    return st?.[slot.p-1]?.name||"?";
+  }
+  if(slot.t==="b3"){
+    const thirds=LETTERS.map(g=>({g,...(actualStandings[g]?.[2]||{name:"?",pts:0,dg:0,gf:0})}))
+      .sort((a,b)=>b.pts-a.pts||b.dg-a.dg||b.gf-a.gf).slice(0,8);
+    return assignB3(thirds)[matchId]||"?";
+  }
+  return koWinners[slot]||"?";
+}
+
+function getKOWinner(id,koActual,koWinners){
+  const sc=koActual[id];
+  if(!sc||sc.s1===null||sc.s2===null) return null;
+  const tA=koWinners[id+"_a"],tB=koWinners[id+"_b"];
+  if(sc.note&&sc.note.toLowerCase().includes("pen")){
+    const m=sc.note.match(/(\d+)[–-](\d+)/);
+    if(m) return parseInt(m[1])>parseInt(m[2])?tA:tB;
+  }
+  if(sc.s1>sc.s2) return tA;
+  if(sc.s2>sc.s1) return tB;
+  return null;
+}
+
+function matchAcc(pS1,pS2,aS1,aS2,pNote,aNote){
+  if(aS1===null||aS2===null) return "pending";
+  const pR=pS1>pS2?"a":pS1<pS2?"b":"d";
+  const aR=aS1>aS2?"a":aS1<aS2?"b":"d";
+  if(pS1===aS1&&pS2===aS2) return "exact";
+  if(pR===aR) return "correct";
+  return "wrong";
+}
+
+/* ══════════════ CSS ══════════════ */
+const CSS=`
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#07090b;--bg2:#0f1418;--bg3:#16202a;
+  --border:rgba(255,255,255,0.07);
+  --gold:#e8b400;--goldl:rgba(232,180,0,0.12);
+  --green:#52b788;--red:#e63946;--blue:#74b9ff;
+  --text:rgba(255,255,255,0.9);--muted:rgba(255,255,255,0.35);
+}
+body{background:var(--bg);}
+.app{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;
+  background-image:radial-gradient(ellipse 100% 40% at 50% -10%,rgba(232,180,0,0.05),transparent);}
+
+/* HEADER */
+.hdr{text-align:center;padding:20px 16px 14px;border-bottom:1px solid var(--border);position:relative;}
+.hdr::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);}
+.title{font-family:'Bebas Neue',sans-serif;font-size:clamp(30px,6vw,56px);letter-spacing:5px;
+  color:var(--gold);text-shadow:0 0 40px rgba(232,180,0,0.2);line-height:1;}
+.sub{font-size:11px;letter-spacing:2.5px;color:var(--muted);margin-top:4px;text-transform:uppercase;}
+.badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:8px;}
+.badge{padding:3px 12px;border-radius:12px;font-size:10px;font-weight:700;letter-spacing:.5px;
+  border:1px solid;text-transform:uppercase;}
+.badge-gold{background:var(--goldl);border-color:rgba(232,180,0,.3);color:var(--gold);}
+.badge-blue{background:rgba(116,185,255,.1);border-color:rgba(116,185,255,.25);color:var(--blue);}
+.badge-green{background:rgba(82,183,136,.1);border-color:rgba(82,183,136,.25);color:var(--green);}
+
+/* ACCURACY BAR */
+.acc{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;
+  background:var(--bg2);border-bottom:1px solid var(--border);}
+.ap{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:14px;font-size:11px;font-weight:600;}
+.ap-e{background:rgba(82,183,136,.15);border:1px solid rgba(82,183,136,.3);color:#81c784;}
+.ap-c{background:rgba(116,185,255,.12);border:1px solid rgba(116,185,255,.25);color:#90caf9;}
+.ap-w{background:rgba(230,57,70,.1); border:1px solid rgba(230,57,70,.2); color:#ef9a9a;}
+.ap-p{background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--muted);}
+.acc-pct{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;
+  color:var(--gold);margin-left:auto;padding-right:4px;}
+.sim-state{font-size:10px;color:var(--muted);margin-left:4px;font-style:italic;}
+
+/* TABS */
+.tabs{display:flex;gap:2px;padding:10px 12px 0;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--border);}
+.tabs::-webkit-scrollbar{display:none;}
+.tab{font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:6px 12px;
+  border:none;border-radius:5px 5px 0 0;background:transparent;color:var(--muted);cursor:pointer;
+  white-space:nowrap;transition:all .15s;border-bottom:2px solid transparent;}
+.tab:hover{color:rgba(255,255,255,.6);}
+.tab.active{color:var(--gold);background:var(--goldl);border-bottom:2px solid var(--gold);}
+
+.content{padding:12px;max-width:1100px;margin:0 auto;}
+
+/* SIM PANEL */
+.sim-panel{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;}
+.sim-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.run-btn{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:3px;
+  padding:10px 28px;border:2px solid var(--gold);border-radius:7px;
+  background:var(--goldl);color:var(--gold);cursor:pointer;transition:all .2s;white-space:nowrap;}
+.run-btn:hover:not(:disabled){background:rgba(232,180,0,.22);transform:translateY(-1px);}
+.run-btn:disabled{opacity:.5;cursor:not-allowed;}
+.prog-wrap{flex:1;min-width:160px;}
+.prog-bar{height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;margin-top:5px;}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--gold),#ff9500);border-radius:3px;transition:width .1s;}
+.prog-lbl{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);}
+.top5{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+.t5-pill{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;
+  background:rgba(255,255,255,.04);border:1px solid var(--border);font-size:13px;}
+.t5-pct{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;margin-left:auto;}
+.t5-vs{font-size:10px;color:var(--muted);margin-left:4px;}
+
+/* GROUPS */
+.grp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(265px,1fr));gap:10px;}
+.grp-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.grp-head{padding:8px 12px;background:var(--goldl);border-bottom:1px solid rgba(232,180,0,.1);
+  display:flex;align-items:center;gap:8px;}
+.grp-letter{font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--gold);line-height:1;}
+.grp-info{font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;}
+.st-tbl{width:100%;border-collapse:collapse;}
+.st-tbl th{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);
+  padding:4px 5px;text-align:center;border-bottom:1px solid var(--border);}
+.st-tbl th:first-child{text-align:left;padding-left:10px;}
+.st-tbl td{font-size:11px;padding:5px 5px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.04);}
+.st-tbl td:first-child{text-align:left;padding-left:8px;}
+.st-tbl tr:last-child td{border-bottom:none;}
+.q1{background:rgba(82,183,136,.1)!important;}
+.q2{background:rgba(82,183,136,.05)!important;}
+.q3{background:rgba(232,180,0,.05)!important;}
+.tc{display:flex;align-items:center;gap:5px;}
+.pts{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--gold);}
+.dg-p{color:var(--green);} .dg-n{color:var(--red);}
+
+/* MATCH ROWS */
+.match-toggle{width:100%;background:none;border:none;color:var(--muted);font-size:10px;
+  letter-spacing:1px;padding:6px 12px;text-align:left;cursor:pointer;display:flex;
+  align-items:center;gap:5px;text-transform:uppercase;font-family:'Outfit',sans-serif;}
+.match-toggle:hover{color:rgba(255,255,255,.5);}
+.m-row{display:grid;grid-template-columns:18px 1fr auto auto auto;align-items:center;
+  gap:5px;padding:5px 10px;border-top:1px solid rgba(255,255,255,.04);}
+.j-tag{font-size:9px;color:var(--muted);text-align:center;}
+.m-teams{font-size:11px;line-height:1.65;}
+.pred-s{font-family:'JetBrains Mono',monospace;font-size:11px;
+  background:rgba(232,180,0,.08);padding:2px 5px;border-radius:3px;color:rgba(232,180,0,.7);
+  min-width:30px;text-align:center;border:1px solid rgba(232,180,0,.12);}
+.inp-pair{display:flex;align-items:center;gap:3px;}
+.score-in{width:27px;height:25px;border-radius:4px;border:1px solid var(--border);
+  background:rgba(255,255,255,.06);color:var(--text);text-align:center;font-size:13px;
+  font-weight:700;font-family:'JetBrains Mono',monospace;padding:0;outline:none;transition:border .15s;}
+.score-in:focus{border-color:rgba(232,180,0,.5);background:rgba(232,180,0,.06);}
+.sep{color:var(--muted);font-size:10px;}
+.acc-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.dot-e{background:var(--green);} .dot-c{background:var(--blue);}
+.dot-w{background:var(--red);} .dot-p{background:rgba(255,255,255,.15);}
+
+/* KO CARDS */
+.ko-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px;}
+.ko-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.ko-card.final{border-color:rgba(232,180,0,.45);background:rgba(232,180,0,.04);}
+.ko-hdr{padding:5px 12px;background:rgba(0,0,0,.25);display:flex;justify-content:space-between;align-items:center;}
+.ko-hdr-id{font-size:10px;color:var(--muted);letter-spacing:.5px;}
+.ko-hdr-venue{font-size:9px;color:rgba(255,255,255,.18);}
+.ko-tm{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:8px;
+  padding:7px 12px;border-bottom:1px solid rgba(255,255,255,.04);}
+.ko-tm:last-of-type{border-bottom:none;}
+.ko-tm.win{background:rgba(82,183,136,.07);}
+.ko-tm.lose{opacity:.5;}
+.ko-name{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;}
+.ko-name .unk{color:var(--muted);font-size:11px;font-weight:400;font-style:italic;}
+.pred-score{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;
+  color:rgba(232,180,0,.35);min-width:18px;text-align:center;}
+.pred-score.likely{color:rgba(255,255,255,.55);}
+/* actual area */
+.ko-actual{display:flex;align-items:center;gap:8px;padding:6px 12px;
+  background:rgba(255,255,255,.03);border-top:1px solid var(--border);}
+.ko-act-lbl{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);}
+.note-in{flex:1;font-size:10px;border:1px solid var(--border);background:rgba(255,255,255,.05);
+  color:rgba(255,255,255,.6);border-radius:4px;padding:3px 7px;outline:none;min-width:0;}
+.note-in:focus{border-color:rgba(232,180,0,.4);}
+.ko-acc-lbl{font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 12px;text-align:right;}
+.acc-exact{color:var(--green);} .acc-correct{color:var(--blue);} .acc-wrong{color:var(--red);}
+
+/* PHASE TITLE */
+.ph-title{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:3px;
+  color:var(--gold);margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid rgba(232,180,0,.15);
+  display:flex;align-items:baseline;gap:10px;}
+.ph-date{font-family:'Outfit',sans-serif;font-size:11px;color:var(--muted);}
+.note-box{font-size:11px;color:var(--muted);background:rgba(255,255,255,.03);border-radius:6px;
+  padding:7px 11px;margin-bottom:10px;line-height:1.55;border-left:2px solid rgba(232,180,0,.25);}
+
+/* FINAL BANNER */
+.final-banner{background:linear-gradient(135deg,rgba(232,180,0,.1),rgba(232,180,0,.03));
+  border:1px solid rgba(232,180,0,.4);border-radius:10px;padding:20px;text-align:center;
+  margin-bottom:14px;position:relative;overflow:hidden;}
+.final-banner::before{content:'🏆';position:absolute;font-size:90px;opacity:.05;
+  top:50%;left:50%;transform:translate(-50%,-50%);}
+.fb-lbl{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:rgba(232,180,0,.5);margin-bottom:6px;}
+.fb-teams{font-family:'Bebas Neue',sans-serif;font-size:clamp(20px,4vw,34px);letter-spacing:2px;margin:4px 0;}
+.fb-preds{display:flex;justify-content:center;gap:24px;margin-top:10px;}
+.fb-p{text-align:center;}
+.fb-pct{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:var(--gold);}
+.fb-team{font-size:11px;color:var(--muted);margin-top:2px;}
+.fb-note{font-size:11px;color:var(--muted);margin-top:8px;}
+
+/* PROB TABLE */
+.prob-wrap{overflow-x:auto;margin-top:10px;}
+.prob-tbl{width:100%;border-collapse:collapse;font-size:12px;}
+.prob-tbl th{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);
+  padding:5px 8px;text-align:right;border-bottom:1px solid var(--border);}
+.prob-tbl th:nth-child(-n+2){text-align:left;}
+.prob-tbl td{padding:6px 8px;text-align:right;border-bottom:1px solid rgba(255,255,255,.04);}
+.prob-tbl td:nth-child(-n+2){text-align:left;}
+.prob-tbl tr.hl1 td{background:rgba(232,180,0,.06);}
+.prob-tbl tr.hl2 td{background:rgba(116,185,255,.04);}
+.bar-cell{display:flex;align-items:center;gap:6px;justify-content:flex-end;}
+.bar-bg{width:80px;height:5px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;flex-shrink:0;}
+.bar-f{height:100%;border-radius:2px;}
+.p-val{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;min-width:42px;text-align:right;}
+.tc-sm{display:flex;align-items:center;gap:6px;}
+.rnk{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);min-width:16px;}
+
+/* BEST3 */
+.b3-box{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:10px;}
+.b3-title{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:7px;}
+.b3-list{display:flex;flex-wrap:wrap;gap:6px;}
+.b3-pill{padding:3px 10px;border-radius:4px;font-size:12px;font-weight:600;
+  background:rgba(232,180,0,.08);border:1px solid rgba(232,180,0,.18);display:flex;align-items:center;gap:5px;}
+
+.hdr-tools{display:flex;align-items:center;gap:10px;justify-content:center;margin-top:8px;flex-wrap:wrap;}
+.saved-lbl{font-size:11px;color:rgba(82,183,136,0.8);letter-spacing:.5px;}
+.reset-btn{font-size:11px;padding:4px 12px;border-radius:12px;border:1px solid rgba(230,57,70,.3);
+background:rgba(230,57,70,.08);color:rgba(230,57,70,.7);cursor:pointer;letter-spacing:.5px;transition:all .2s;}
+.reset-btn:hover{background:rgba(230,57,70,.18);color:#ef9a9a;}
+.col-match{background:rgba(253,216,53,0.06)!important;border-left:2px solid rgba(253,216,53,0.5);}
+.col-tab{background:var(--bg2);border-radius:10px;overflow:hidden;margin-bottom:14px;}
+.col-banner{background:linear-gradient(135deg,rgba(253,216,53,.12),rgba(76,175,80,.08));
+  border:1px solid rgba(253,216,53,.3);border-radius:10px;padding:16px;text-align:center;margin-bottom:14px;position:relative;}
+.col-banner::before{content:"🇨🇴";position:absolute;font-size:70px;opacity:.07;top:50%;left:50%;transform:translate(-50%,-50%);}
+.col-title{font-family:"Bebas Neue",sans-serif;font-size:28px;letter-spacing:4px;color:#fdd835;margin-bottom:4px;}
+.col-next{font-size:13px;color:rgba(255,255,255,.6);margin-bottom:6px;}
+.col-countdown{font-family:"JetBrains Mono",monospace;font-size:26px;font-weight:700;color:#fdd835;
+  text-shadow:0 0 20px rgba(253,216,53,.3);}
+.col-match-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:10px;}
+.col-match-card.upcoming{border-color:rgba(253,216,53,.35);}
+.col-match-card.played{opacity:.7;}
+.col-mhdr{padding:6px 12px;background:rgba(253,216,53,.07);border-bottom:1px solid rgba(253,216,53,.1);
+  display:flex;justify-content:space-between;align-items:center;}
+.col-mhdr .dt{font-size:12px;font-weight:700;color:#fdd835;}
+.col-mhdr .ve{font-size:10px;color:var(--muted);}
+.col-mbody{padding:10px 12px;display:flex;align-items:center;gap:10px;}
+.col-mteams{flex:1;font-size:14px;font-weight:600;}
+.col-mteams .vs{font-size:11px;color:var(--muted);margin:0 4px;}
+.col-mbtns{display:flex;gap:6px;flex-wrap:wrap;}
+.notif-btn{font-size:11px;padding:5px 12px;border-radius:6px;cursor:pointer;font-weight:600;border:none;transition:all .2s;}
+.notif-btn.primary{background:rgba(253,216,53,.15);border:1px solid rgba(253,216,53,.3);color:#fdd835;}
+.notif-btn.primary:hover{background:rgba(253,216,53,.25);}
+.notif-btn.cal{background:rgba(82,183,136,.1);border:1px solid rgba(82,183,136,.25);color:var(--green);}
+.notif-btn.cal:hover{background:rgba(82,183,136,.2);}
+.notif-ok{font-size:11px;color:var(--green);padding:4px 0;}
+.ko-path-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:4px;}
+.ko-path-title{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+.ko-path-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;}
+.ko-path-row:last-child{border-bottom:none;}
+.no-sim{text-align:center;padding:40px;color:var(--muted);font-size:13px;line-height:2;}
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:14px;}
+.sum-card{background:rgba(255,255,255,.03);border-radius:6px;padding:9px;text-align:center;border:1px solid var(--border);}
+.sum-lbl{font-size:10px;color:var(--muted);margin-bottom:3px;}
+.sum-val{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;}
+`;
+
+/* ══════════════ TEAM COLOR ══════════════ */
+const tColor=t=>{
+  const m={"España":"#e63946","Francia":"#457b9d","Inglaterra":"#74b9ff",
+    "Argentina":"#74c69d","Brasil":"#f4a261","Alemania":"#e9c46a",
+    "Portugal":"#e76f51","Países Bajos":"#ff9900","Colombia":"#a8dadc"};
+  return m[t]||"#8d99ae";
+};
+
+/* ══════════════ COMPONENTS ══════════════ */
+function ScoreIn({val,onChange}){
+  return(
+    <input className="score-in" type="number" min="0" max="30"
+      value={val===null||val===undefined?"":val}
+      onChange={e=>onChange(e.target.value===""?null:Math.max(0,parseInt(e.target.value)||0))}/>
+  );
+}
+
+function Dot({status}){
+  return <div className={`acc-dot dot-${status==="exact"?"e":status==="correct"?"c":status==="wrong"?"w":"p"}`}/>;
+}
+
+function GroupCard({letter,actualScores,onScore,predStandings}){
+  const[open,setOpen]=useState(false);
+  const st=computeStandings(letter,actualScores);
+  const teams=GRUPOS[letter];
+  const simPredOrder=predStandings?.[letter]||[];
+
+  return(
+    <div className="grp-card">
+      <div className="grp-head">
+        <div className="grp-letter">G·{letter}</div>
+        <div>
+          <div className="grp-info">Grupo {letter}</div>
+          {simPredOrder[0]&&<div style={{fontSize:9,color:"rgba(232,180,0,.5)",letterSpacing:1}}>SIM→ {simPredOrder[0]} / {simPredOrder[1]}</div>}
+        </div>
+      </div>
+      <table className="st-tbl">
+        <thead><tr>
+          <th style={{paddingLeft:10,textAlign:"left"}}>Equipo</th>
+          <th>PJ</th><th>PG</th><th>PE</th><th>PP</th>
+          <th>GF</th><th>GC</th><th>DG</th><th>Pts</th>
+        </tr></thead>
+        <tbody>
+          {st.map((t,i)=>{
+            const dgv=t.dg||0;
+            return(
+              <tr key={t.name} className={i===0?"q1":i===1?"q2":i===2?"q3":""}>
+                <td>
+                  <div className="tc">
+                    <span style={{fontSize:14}}>{f(t.name)}</span>
+                    <span style={{fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>
+                      {t.name.length>12?t.name.slice(0,11)+"…":t.name}
+                    </span>
+                  </div>
+                </td>
+                <td>{t.pj||0}</td><td>{t.v||0}</td><td>{t.e||0}</td><td>{t.d||0}</td>
+                <td>{t.gf||0}</td><td>{t.gc||0}</td>
+                <td className={dgv>0?"dg-p":dgv<0?"dg-n":""}>{dgv>0?"+":""}{dgv}</td>
+                <td className="pts">{t.pts||0}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div style={{borderTop:"1px solid var(--border)"}}>
+        <button className="match-toggle" onClick={()=>setOpen(!open)}>
+          {open?"▾":"▸"} Partidos · Col. dorada=predicción sim · Edita resultado real
+        </button>
+        {open&&PAIRS.map(([i,j],mi)=>{
+          const key=`${letter}_${mi}`;
+          const act=actualScores[key]||[null,null];
+          const[ps1,ps2]=predScore(teams[i],teams[j]);
+          const acc=matchAcc(ps1,ps2,act[0],act[1]);
+          const wp=winProb(teams[i],teams[j]);
+          const sch=SCH[`${letter}_${mi}`]||{};
+          return(
+            <div key={mi} className={`m-row${sch.col?' col-match':''}`}>
+              <div className="j-tag">
+                <div style={{fontSize:9,fontWeight:700,color:sch.col?'#fdd835':'var(--muted)',lineHeight:1.4}}>{sch.d||''}</div>
+                <div style={{fontSize:9,color:'var(--muted)',lineHeight:1.3}}>{sch.h||''}</div>
+              </div>
+              <div className="m-teams">
+                <div>{f(teams[i])} {teams[i]} <span style={{fontSize:9,color:"var(--muted)"}}>({wp.win}%)</span></div>
+                <div>{f(teams[j])} {teams[j]} <span style={{fontSize:9,color:"var(--muted)"}}>({wp.lose}%)</span></div>
+              </div>
+              <div className="pred-s">{ps1}–{ps2}</div>
+              <div className="inp-pair">
+                <ScoreIn val={act[0]} onChange={v=>{const n=[...act];n[0]=v;onScore(letter,mi,n);}}/>
+                <span className="sep">–</span>
+                <ScoreIn val={act[1]} onChange={v=>{const n=[...act];n[1]=v;onScore(letter,mi,n);}}/>
+              </div>
+              <Dot status={acc}/>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function KOCard({match,predTeams,predScores,actualStandings,koActual,koWinners,onScore,onNote,winPcts,isFinal}){
+  const tA=predTeams[0]||"?",tB=predTeams[1]||"?";
+  const[pS1,pS2]=predScores||[null,null];
+  const act=koActual[match.id]||{s1:null,s2:null,note:""};
+  const actResult=act.s1!==null&&act.s2!==null?(act.s1>act.s2?"a":act.s2>act.s1?"b":"d"):null;
+  const predResult=pS1!==null&&pS2!==null?(pS1>pS2?"a":pS2>pS1?"b":"d"):null;
+  const acc=matchAcc(pS1,pS2,act.s1,act.s2,"",act.note||"");
+  const teamWin=(act.s1!==null&&act.s2!==null)?(actResult==="a"?0:actResult==="b"?1:-1):null;
+
+  return(
+    <div className={`ko-card${isFinal?" final":""}`}>
+      <div className="ko-hdr">
+        <span className="ko-hdr-id">{match.id} · {(SCH[match.id]||{}).d||match.date} · {(SCH[match.id]||{}).h||''} COL · {match.label}</span>
+        <span className="ko-hdr-venue">{(SCH[match.id]||{}).v||match.venue}</span>
+      </div>
+      {[{name:tA,pS:pS1,idx:0,wp:winPcts?.[0]},{name:tB,pS:pS2,idx:1,wp:winPcts?.[1]}].map(({name,pS,idx,wp})=>(
+        <div key={idx} className={`ko-tm${teamWin===idx?" win":teamWin!==null?" lose":""}`}>
+          <div className="ko-name">
+            <span style={{fontSize:15}}>{f(name)}</span>
+            {name==="?"?<span className="unk">Por definir</span>:<span>{name}</span>}
+            {wp!==undefined&&<span style={{fontSize:9,color:"var(--muted)",marginLeft:3}}>{wp}%</span>}
+          </div>
+          <div className={`pred-score${predResult===(idx===0?"a":"b")?" likely":""}`}>{pS??"-"}</div>
+          <ScoreIn val={idx===0?act.s1:act.s2} onChange={v=>onScore(match.id,idx===0?"s1":"s2",v)}/>
+        </div>
+      ))}
+      <div className="ko-actual">
+        <span className="ko-act-lbl">Real:</span>
+        <input className="note-in" placeholder='notas (ej: "Penaltis 4-2")'
+          value={act.note||""} onChange={e=>onNote(match.id,e.target.value)}/>
+        <Dot status={acc}/>
+      </div>
+      {acc!=="pending"&&(
+        <div className={`ko-acc-lbl ${acc==="exact"?"acc-exact":acc==="correct"?"acc-correct":"acc-wrong"}`}>
+          {acc==="exact"?"✓ Exacto":acc==="correct"?"~ Ganador correcto":"✗ Incorrecto"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════ APP ══════════════ */
+function App(){
+  const[tab,setTab]=useState("sim");
+
+  // ── localStorage: carga estado persistido ──────────────────────────────
+  const LS = {
+    load: (key, fallback) => {
+      try { const v=localStorage.getItem('wc2026_'+key); return v?JSON.parse(v):fallback; } catch{return fallback;}
+    },
+    save: (key, val) => {
+      try { localStorage.setItem('wc2026_'+key, JSON.stringify(val)); } catch(e){console.warn('LS save error',e);}
+    },
+    clear: () => {
+      ['simData','groupActual','koActual','savedAt'].forEach(k=>localStorage.removeItem('wc2026_'+k));
+    }
+  };
+
+  const[simData,setSimData]   =useState(()=>LS.load('simData',null));
+  const[running,setRunning]   =useState(false);
+  const[progress,setProgress] =useState(0);
+  const[groupActual,setGroupActual]=useState(()=>LS.load('groupActual',{}));
+  const[koActual,setKoActual] =useState(()=>LS.load('koActual',{}));
+  const[savedAt,setSavedAt]   =useState(()=>LS.load('savedAt',null));
+  const N=10000;
+
+  /* ── Calendario oficial FIFA (horario Colombia COT = ET-1h) ─────────── */
+  const SCH = {
+    // GRUPO A  (México=0, Corea Sur=1, Chequia=2, Sudáfrica=3)
+    A_0:{d:'11 jun',h:'14:00',v:'Azteca, CDMX'},
+    A_1:{d:'11 jun',h:'21:00',v:'Akron, Guadalajara'},
+    A_2:{d:'18 jun',h:'20:00',v:'Akron, Guadalajara'},       // México vs Corea Sur
+    A_3:{d:'18 jun',h:'11:00',v:'Merc-Benz, Atlanta'},       // Chequia vs Sudáfrica
+    A_4:{d:'24 jun',h:'20:00',v:'Azteca, CDMX'},
+    A_5:{d:'24 jun',h:'20:00',v:'BBVA, Monterrey'},
+    // GRUPO B  (Suiza=0, Canadá=1, Bosnia=2, Qatar=3)
+    B_0:{d:'13 jun',h:'14:00',v:'Levi's, Santa Clara'},    // Qatar vs Suiza
+    B_1:{d:'12 jun',h:'14:00',v:'BMO Field, Toronto'},       // Canadá vs Bosnia
+    B_2:{d:'24 jun',h:'14:00',v:'BC Place, Vancouver'},      // Suiza vs Canadá
+    B_3:{d:'24 jun',h:'14:00',v:'Lumen Field, Seattle'},     // Bosnia vs Qatar
+    B_4:{d:'18 jun',h:'14:00',v:'SoFi Stadium, LA'},         // Suiza vs Bosnia
+    B_5:{d:'18 jun',h:'17:00',v:'BC Place, Vancouver'},      // Canadá vs Qatar
+    // GRUPO C  (Brasil=0, Marruecos=1, Escocia=2, Haití=3)
+    C_0:{d:'19 jun',h:'20:00',v:'Lincoln, Filadelfia'},      // Brasil vs Haití
+    C_1:{d:'19 jun',h:'17:00',v:'Gillette, Boston'},         // Escocia vs Marruecos
+    C_2:{d:'13 jun',h:'17:00',v:'MetLife, N.Jersey'},        // Brasil vs Marruecos
+    C_3:{d:'13 jun',h:'20:00',v:'Gillette, Boston'},         // Haití vs Escocia
+    C_4:{d:'24 jun',h:'17:00',v:'Hard Rock, Miami'},         // Escocia vs Brasil
+    C_5:{d:'24 jun',h:'17:00',v:'Merc-Benz, Atlanta'},       // Marruecos vs Haití
+    // GRUPO D  (Estados Unidos=0, Turquía=1, Paraguay=2, Australia=3)
+    D_0:{d:'19 jun',h:'14:00',v:'Lumen Field, Seattle'},     // EEUU vs Australia
+    D_1:{d:'20 jun',h:'23:00',v:'Levi's, Santa Clara'},   // Turquía vs Paraguay
+    D_2:{d:'25 jun',h:'21:00',v:'SoFi Stadium, LA'},         // Turquía vs EEUU
+    D_3:{d:'25 jun',h:'21:00',v:'Levi's, Santa Clara'},   // Paraguay vs Australia
+    D_4:{d:'12 jun',h:'20:00',v:'SoFi Stadium, LA'},         // EEUU vs Paraguay
+    D_5:{d:'14 jun',h:'23:00',v:'BC Place, Vancouver'},      // Australia vs Turquía
+    // GRUPO E  (Alemania=0, Ecuador=1, Costa de Marfil=2, Curazao=3)
+    E_0:{d:'14 jun',h:'12:00',v:'NRG Stadium, Houston'},     // Alemania vs Curazao
+    E_1:{d:'14 jun',h:'18:00',v:'Lincoln, Filadelfia'},      // Costa de Marfil vs Ecuador
+    E_2:{d:'20 jun',h:'15:00',v:'BMO Field, Toronto'},       // Alemania vs Costa de Marfil
+    E_3:{d:'20 jun',h:'19:00',v:'Arrowhead, KC'},            // Ecuador vs Curazao
+    E_4:{d:'25 jun',h:'15:00',v:'MetLife, N.Jersey'},        // Ecuador vs Alemania
+    E_5:{d:'25 jun',h:'15:00',v:'Lincoln, Filadelfia'},      // Curazao vs Costa de Marfil
+    // GRUPO F  (Países Bajos=0, Japón=1, Suecia=2, Túnez=3)
+    F_0:{d:'20 jun',h:'12:00',v:'NRG Stadium, Houston'},     // PB vs Suecia
+    F_1:{d:'21 jun',h:'23:00',v:'BBVA, Monterrey'},          // Túnez vs Japón
+    F_2:{d:'14 jun',h:'15:00',v:'AT&T Stadium, Dallas'},     // PB vs Japón
+    F_3:{d:'14 jun',h:'21:00',v:'BBVA, Monterrey'},          // Suecia vs Túnez
+    F_4:{d:'25 jun',h:'18:00',v:'AT&T Stadium, Dallas'},     // Japón vs Suecia
+    F_5:{d:'25 jun',h:'18:00',v:'Arrowhead, KC'},            // Túnez vs PB
+    // GRUPO G  (Bélgica=0, Irán=1, Egipto=2, Nueva Zelanda=3)
+    G_0:{d:'21 jun',h:'14:00',v:'SoFi Stadium, LA'},         // Bélgica vs Irán
+    G_1:{d:'21 jun',h:'20:00',v:'BC Place, Vancouver'},      // Nueva Zelanda vs Egipto
+    G_2:{d:'27 jun',h:'22:00',v:'Lumen Field, Seattle'},     // Egipto vs Irán
+    G_3:{d:'27 jun',h:'22:00',v:'BC Place, Vancouver'},      // Nueva Zelanda vs Bélgica
+    G_4:{d:'15 jun',h:'14:00',v:'Lumen Field, Seattle'},     // Bélgica vs Egipto
+    G_5:{d:'15 jun',h:'20:00',v:'SoFi Stadium, LA'},         // Irán vs Nueva Zelanda
+    // GRUPO H  (España=0, Uruguay=1, Arabia Saudí=2, Cabo Verde=3)
+    H_0:{d:'15 jun',h:'11:00',v:'Merc-Benz, Atlanta'},       // España vs Cabo Verde
+    H_1:{d:'15 jun',h:'17:00',v:'Hard Rock, Miami'},         // Arabia Saudí vs Uruguay
+    H_2:{d:'26 jun',h:'19:00',v:'Akron, Guadalajara'},       // Uruguay vs España
+    H_3:{d:'26 jun',h:'19:00',v:'NRG Stadium, Houston'},     // Cabo Verde vs Arabia Saudí
+    H_4:{d:'21 jun',h:'11:00',v:'Merc-Benz, Atlanta'},       // España vs Arabia Saudí
+    H_5:{d:'21 jun',h:'17:00',v:'Hard Rock, Miami'},         // Uruguay vs Cabo Verde
+    // GRUPO I  (Francia=0, Senegal=1, Noruega=2, Iraq=3)
+    I_0:{d:'22 jun',h:'16:00',v:'Lincoln, Filadelfia'},      // Francia vs Iraq
+    I_1:{d:'22 jun',h:'19:00',v:'MetLife, N.Jersey'},        // Noruega vs Senegal
+    I_2:{d:'16 jun',h:'14:00',v:'MetLife, N.Jersey'},        // Francia vs Senegal
+    I_3:{d:'16 jun',h:'17:00',v:'Gillette, Boston'},         // Iraq vs Noruega
+    I_4:{d:'26 jun',h:'14:00',v:'Gillette, Boston'},         // Noruega vs Francia
+    I_5:{d:'26 jun',h:'14:00',v:'BMO Field, Toronto'},       // Senegal vs Iraq
+    // GRUPO J  (Argentina=0, Austria=1, Argelia=2, Jordania=3)
+    J_0:{d:'27 jun',h:'21:00',v:'AT&T Stadium, Dallas'},     // Jordania vs Argentina
+    J_1:{d:'27 jun',h:'21:00',v:'Arrowhead, KC'},            // Argelia vs Austria
+    J_2:{d:'22 jun',h:'12:00',v:'AT&T Stadium, Dallas'},     // Argentina vs Austria
+    J_3:{d:'22 jun',h:'22:00',v:'Levi's, Santa Clara'},   // Jordania vs Argelia
+    J_4:{d:'16 jun',h:'20:00',v:'Arrowhead, KC'},            // Argentina vs Argelia
+    J_5:{d:'17 jun',h:'23:00',v:'Levi's, Santa Clara'},   // Austria vs Jordania
+    // GRUPO K  (Portugal=0, Colombia=1, Uzbekistán=2, RD Congo=3) 🇨🇴
+    K_0:{d:'17 jun',h:'12:00',v:'NRG Stadium, Houston'},     // Portugal vs RD Congo
+    K_1:{d:'17 jun',h:'21:00',v:'Azteca, CDMX',col:true},   // 🇨🇴 Colombia vs Uzbekistán
+    K_2:{d:'27 jun',h:'18:30',v:'Hard Rock, Miami',col:true},// 🇨🇴 Colombia vs Portugal
+    K_3:{d:'27 jun',h:'18:30',v:'Merc-Benz, Atlanta'},       // RD Congo vs Uzbekistán
+    K_4:{d:'23 jun',h:'12:00',v:'NRG Stadium, Houston'},     // Portugal vs Uzbekistán
+    K_5:{d:'23 jun',h:'21:00',v:'Akron, Guadalajara',col:true},// 🇨🇴 Colombia vs RD Congo
+    // GRUPO L  (Inglaterra=0, Croacia=1, Ghana=2, Panamá=3)
+    L_0:{d:'27 jun',h:'16:00',v:'MetLife, N.Jersey'},        // Panamá vs Inglaterra
+    L_1:{d:'27 jun',h:'16:00',v:'Lincoln, Filadelfia'},      // Croacia vs Ghana
+    L_2:{d:'17 jun',h:'15:00',v:'AT&T Stadium, Dallas'},     // Inglaterra vs Croacia
+    L_3:{d:'17 jun',h:'18:00',v:'BMO Field, Toronto'},       // Ghana vs Panamá
+    L_4:{d:'23 jun',h:'15:00',v:'Gillette, Boston'},         // Inglaterra vs Ghana
+    L_5:{d:'23 jun',h:'18:00',v:'BMO Field, Toronto'},       // Panamá vs Croacia
+    // FASE ELIMINATORIA (horario Colombia)
+    M73:{d:'28 jun',h:'14:00',v:'SoFi Stadium, LA'},
+    M74:{d:'29 jun',h:'15:30',v:'Gillette, Boston'},
+    M75:{d:'29 jun',h:'20:00',v:'BBVA, Monterrey'},
+    M76:{d:'29 jun',h:'12:00',v:'NRG Stadium, Houston'},
+    M77:{d:'30 jun',h:'16:00',v:'MetLife, N.Jersey'},
+    M78:{d:'30 jun',h:'12:00',v:'AT&T Stadium, Dallas'},
+    M79:{d:'30 jun',h:'20:00',v:'Azteca, CDMX'},
+    M80:{d:'1 jul', h:'11:00',v:'Merc-Benz, Atlanta'},
+    M81:{d:'1 jul', h:'19:00',v:'Levi's, Santa Clara'},
+    M82:{d:'1 jul', h:'15:00',v:'Lumen Field, Seattle'},
+    M83:{d:'2 jul', h:'18:00',v:'BMO Field, Toronto'},       // Potencial 🇨🇴 si 2°K
+    M84:{d:'2 jul', h:'14:00',v:'SoFi Stadium, LA'},
+    M85:{d:'2 jul', h:'20:00',v:'BC Place, Vancouver'},
+    M86:{d:'3 jul', h:'17:00',v:'Hard Rock, Miami'},
+    M87:{d:'3 jul', h:'20:30',v:'Arrowhead, KC'},            // Potencial 🇨🇴 si 1°K
+    M88:{d:'3 jul', h:'13:00',v:'AT&T Stadium, Dallas'},
+    M89:{d:'4 jul', h:'16:00',v:'Lincoln, Filadelfia'},
+    M90:{d:'4 jul', h:'12:00',v:'NRG Stadium, Houston'},
+    M91:{d:'5 jul', h:'15:00',v:'MetLife, N.Jersey'},
+    M92:{d:'5 jul', h:'19:00',v:'Azteca, CDMX'},
+    M93:{d:'6 jul', h:'14:00',v:'AT&T Stadium, Dallas'},
+    M94:{d:'6 jul', h:'19:00',v:'Lumen Field, Seattle'},
+    M95:{d:'7 jul', h:'11:00',v:'Merc-Benz, Atlanta'},
+    M96:{d:'7 jul', h:'15:00',v:'BC Place, Vancouver'},
+    M97:{d:'9 jul', h:'15:00',v:'Gillette, Boston'},
+    M98:{d:'10 jul',h:'14:00',v:'SoFi Stadium, LA'},
+    M99:{d:'11 jul',h:'16:00',v:'Hard Rock, Miami'},
+    M100:{d:'11 jul',h:'20:00',v:'Arrowhead, KC'},
+    M101:{d:'14 jul',h:'14:00',v:'AT&T Stadium, Dallas'},
+    M102:{d:'15 jul',h:'14:00',v:'Merc-Benz, Atlanta'},
+    M103:{d:'18 jul',h:'16:00',v:'Hard Rock, Miami'},
+    M104:{d:'19 jul',h:'14:00',v:'MetLife Stadium, N.Jersey'},
+  };
+
+  // Colombia group matches keys
+  const COL_GRP = ['K_1','K_5','K_2'];
+  // Colombia match datetimes (COL time, for countdown & notifications)
+  const COL_MATCHES = [
+    {key:'K_1',label:'Uzbekistán vs Colombia',dt:new Date('2026-06-17T21:00:00-05:00'),venue:'Azteca, CDMX'},
+    {key:'K_5',label:'Colombia vs RD Congo',  dt:new Date('2026-06-23T21:00:00-05:00'),venue:'Akron, Guadalajara'},
+    {key:'K_2',label:'Colombia vs Portugal',  dt:new Date('2026-06-27T18:30:00-05:00'),venue:'Hard Rock, Miami'},
+  ];
+
+
+  // ── Persistencia automática en localStorage ────────────────────────────
+  useEffect(()=>{ if(Object.keys(groupActual).length>0){ LS.save('groupActual',groupActual); const t=new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}); setSavedAt(t); LS.save('savedAt',t); } },[groupActual]);
+  useEffect(()=>{ if(Object.keys(koActual).length>0){    LS.save('koActual',koActual);    const t=new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}); setSavedAt(t); LS.save('savedAt',t); } },[koActual]);
+  useEffect(()=>{ if(simData){ LS.save('simData',simData); const t=new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}); setSavedAt(t); LS.save('savedAt',t); } },[simData]);
+
+  // Run Monte Carlo
+  const runSim=useCallback(async()=>{
+    setRunning(true);setProgress(0);setSimData(null);
+    const wins={},semis={},finals={},r8c={},groupPos={};
+    const BS=200;
+    for(let i=0;i<N;i+=BS){
+      await new Promise(r=>setTimeout(r,0));
+      const end=Math.min(i+BS,N);
+      for(let j=i;j<end;j++){
+        const{champ,finalists,semifinalists,r8}=runOne(groupPos);
+        wins[champ]=(wins[champ]||0)+1;
+        finalists.forEach(t=>{if(t)finals[t]=(finals[t]||0)+1;});
+        semifinalists.forEach(t=>{if(t)semis[t]=(semis[t]||0)+1;});
+        r8.forEach(t=>{if(t)r8c[t]=(r8c[t]||0)+1;});
+      }
+      setProgress(Math.round(Math.min(i+BS,N)/N*100));
+    }
+    const table=Object.keys(ELO).filter((t,_,arr)=>arr.indexOf(t)===arr.lastIndexOf(t)||true)
+      .filter((v,i,a)=>a.indexOf(v)===i)
+      .map(t=>({team:t,elo:elo(t),winPct:((wins[t]||0)/N)*100,
+        finalPct:((finals[t]||0)/N)*100,semiPct:((semis[t]||0)/N)*100,
+        r8Pct:((r8c[t]||0)/N)*100,opta:OPTA[t]||null}))
+      .sort((a,b)=>b.winPct-a.winPct);
+    const simResult={table,groupPos,nSims:N};
+    setSimData(simResult);
+    setRunning(false);setProgress(100);
+  },[]);
+
+  // Derived predicted standings from sim
+  const predStandings=useMemo(()=>{
+    if(!simData?.groupPos) return {};
+    return buildPredStandings(simData.groupPos);
+  },[simData]);
+
+  // Derived best3 and KO bracket from pred standings
+  const{predBracket,best3assign}=useMemo(()=>{
+    const ps=predStandings;
+    if(!Object.keys(ps).length) return{predBracket:{},best3assign:{}};
+    const thirds=LETTERS.map(g=>({g,name:ps[g]?.[2]||"?",pts:0,dg:0,gf:0,
+      advProb:simData?.table?.find(t=>t.team===(ps[g]?.[2]))?.r8Pct||0}));
+    thirds.sort((a,b)=>b.advProb-a.advProb);
+    const b3=assignB3(thirds.slice(0,8));
+    const W=buildKOBracket(ps,b3);
+    return{predBracket:W,best3assign:b3};
+  },[predStandings,simData]);
+
+  // Actual standings (computed from user inputs)
+  const actualStandings=useMemo(()=>{
+    const out={};
+    LETTERS.forEach(g=>{out[g]=computeStandings(g,groupActual);});
+    return out;
+  },[groupActual]);
+
+  // Actual best3rds
+  const actualBest3=useMemo(()=>{
+    const thirds=LETTERS.map(g=>({g,...(actualStandings[g]?.[2]||{name:"?",pts:0,dg:0,gf:0})}))
+      .sort((a,b)=>b.pts-a.pts||b.dg-a.dg||b.gf-a.gf).slice(0,8);
+    return thirds;
+  },[actualStandings]);
+
+  // Resolve KO team (uses actual if available, else sim pred)
+  const koWinners=useMemo(()=>{
+    const W={};
+    function resSlot(slot,id){
+      if(slot.t==="g"){
+        const st=actualStandings[slot.g];
+        const t=st?.[slot.p-1]?.name;
+        return t&&t!=="?"?t:(predStandings[slot.g]?.[slot.p-1]||"?");
+      }
+      if(slot.t==="b3"){
+        const pool=(B3_POOLS[id]||"").split("");
+        const found=actualBest3.find(t=>pool.includes(t.g)&&t.name!=="?");
+        return found?.name||best3assign[id]||"?";
+      }
+      return W[slot]||"?";
+    }
+    R32.forEach(m=>{
+      const a=resSlot(m.a,m.id),b=resSlot(m.b,m.id);
+      W[m.id+"_a"]=a; W[m.id+"_b"]=b;
+      const sc=koActual[m.id];
+      if(sc?.s1!==null&&sc?.s2!==null&&sc?.s1!==undefined){
+        const note=sc.note||"";
+        if(note.toLowerCase().includes("pen")){const mm=note.match(/(\d+)[–-](\d+)/);if(mm)W[m.id]=parseInt(mm[1])>parseInt(mm[2])?a:b;}
+        else W[m.id]=sc.s1>sc.s2?a:sc.s2>sc.s1?b:null;
+      } else W[m.id]=elo(a)>=elo(b)?a:b; // sim prediction
+    });
+    [...R16,...QF,...SF].forEach(m=>{
+      const a=W[m.a]||predBracket[m.a]||"?";
+      const b=W[m.b]||predBracket[m.b]||"?";
+      W[m.id+"_a"]=a; W[m.id+"_b"]=b;
+      const sc=koActual[m.id];
+      if(sc?.s1!==null&&sc?.s1!==undefined){
+        const note=sc.note||"";
+        if(note.toLowerCase().includes("pen")){const mm=note.match(/(\d+)[–-](\d+)/);if(mm)W[m.id]=parseInt(mm[1])>parseInt(mm[2])?a:b;}
+        else W[m.id]=sc.s1>sc.s2?a:sc.s2>sc.s1?b:null;
+      } else W[m.id]=elo(a)>=elo(b)?a:b;
+    });
+    // Final & 3rd
+    [FINAL,THIRD].forEach(m=>{
+      const a=m.isLoser?(W.M101===W[m.a]?W.M102:W.M101)||(predBracket.M103a||"?"):(W[m.a]||predBracket[m.a]||"?");
+      const b=m.isLoser?(W.M102===W[m.b]?W.M101:W.M102)||(predBracket.M103b||"?"):(W[m.b]||predBracket[m.b]||"?");
+      W[m.id+"_a"]=a; W[m.id+"_b"]=b;
+      const sc=koActual[m.id];
+      if(sc?.s1!==null&&sc?.s1!==undefined){
+        W[m.id]=sc.s1>sc.s2?a:sc.s2>sc.s1?b:null;
+      } else W[m.id]=elo(a)>=elo(b)?a:b;
+    });
+    return W;
+  },[actualStandings,actualBest3,predStandings,best3assign,predBracket,koActual]);
+
+  const getPredForKO=(m)=>{
+    const tA=koWinners[m.id+"_a"]||"?",tB=koWinners[m.id+"_b"]||"?";
+    const[s1,s2]=predScore(tA,tB);
+    const wp=winProb(tA,tB);
+    const simRow=id=>simData?.table?.find(t=>t.team===id);
+    return{teams:[tA,tB],scores:[s1,s2],
+      winPcts:[simRow(tA)?.winPct?.toFixed(1)||wp.win,simRow(tB)?.winPct?.toFixed(1)||wp.lose]};
+  };
+
+  // Accuracy stats
+  const accStats=useMemo(()=>{
+    let exact=0,correct=0,wrong=0,pending=0;
+    LETTERS.forEach(g=>PAIRS.forEach(([i,j],mi)=>{
+      const key=`${g}_${mi}`;
+      const act=groupActual[key]||[null,null];
+      const[ps1,ps2]=predScore(GRUPOS[g][i],GRUPOS[g][j]);
+      const s=matchAcc(ps1,ps2,act[0],act[1]);
+      if(s==="exact")exact++;else if(s==="correct")correct++;else if(s==="wrong")wrong++;else pending++;
+    }));
+    ALL_KO.forEach(m=>{
+      const[pS1,pS2]=predScore(koWinners[m.id+"_a"]||"?",koWinners[m.id+"_b"]||"?");
+      const act=koActual[m.id]||{};
+      const s=matchAcc(pS1,pS2,act.s1,act.s2,"",act.note||"");
+      if(s==="exact")exact++;else if(s==="correct")correct++;else if(s==="wrong")wrong++;else pending++;
+    });
+    const tot=exact+correct+wrong;
+    return{exact,correct,wrong,pending,total:tot,pct:tot>0?Math.round((exact+correct)/tot*100):null};
+  },[groupActual,koActual,koWinners]);
+
+  const handleGrpScore=useCallback((g,mi,val)=>{
+    setGroupActual(p=>({...p,[`${g}_${mi}`]:val}));
+  },[]);
+  const handleKOScore=useCallback((id,field,val)=>{
+    setKoActual(p=>({...p,[id]:{...p[id]||{},s1:null,s2:null,[field]:val}}));
+  },[]);
+  const handleKONote=useCallback((id,note)=>{
+    setKoActual(p=>({...p,[id]:{...p[id]||{},note}}));
+  },[]);
+
+
+  // ── Colombia: countdown & notifications ───────────────────────────────
+  const [notifPerm, setNotifPerm] = useState(
+    typeof Notification !== 'undefined' ? Notification.permission : 'default'
+  );
+  const [notifScheduled, setNotifScheduled] = useState(false);
+
+  function msToCountdown(ms) {
+    if (ms <= 0) return null;
+    const d = Math.floor(ms / 86400000);
+    const h = Math.floor((ms % 86400000) / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    if (d > 0) return `${d}d ${h}h ${m}m`;
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    return `${m}m ${s}s`;
+  }
+
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const nextColMatch = COL_MATCHES.find(m => m.dt.getTime() > now);
+  const msToNext = nextColMatch ? nextColMatch.dt.getTime() - now : null;
+
+  function scheduleNotifications() {
+    if (typeof Notification === 'undefined') {
+      alert('Tu navegador no soporta notificaciones. Usa Chrome en Android o Safari en iOS.');
+      return;
+    }
+    Notification.requestPermission().then(perm => {
+      setNotifPerm(perm);
+      if (perm === 'granted') {
+        let scheduled = 0;
+        COL_MATCHES.forEach(m => {
+          const alert30  = m.dt.getTime() - 30 * 60 * 1000;
+          const alertNow = m.dt.getTime();
+          const delay30  = alert30  - Date.now();
+          const delay0   = alertNow - Date.now();
+          if (delay30 > 0) {
+            setTimeout(() => {
+              new Notification('⚽ ¡Colombia juega en 30 minutos!', {
+                body: m.label + ' · ' + m.venue,
+                icon: './icon-192.png', tag: 'col30-' + m.dt.getTime(),
+                requireInteraction: true,
+              });
+            }, delay30);
+            scheduled++;
+          }
+          if (delay0 > 0) {
+            setTimeout(() => {
+              new Notification('🔴 ¡Comienza Colombia!', {
+                body: m.label + ' · ' + m.venue,
+                icon: './icon-192.png', tag: 'col0-' + m.dt.getTime(),
+                requireInteraction: true,
+              });
+            }, delay0);
+          }
+        });
+        setNotifScheduled(scheduled > 0);
+        if (scheduled === 0) alert('No hay partidos de Colombia próximos para alertar.');
+      }
+    });
+  }
+
+  function calUrl(m) {
+    const s = m.dt.toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');
+    const e = new Date(m.dt.getTime()+7200000).toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');
+    return \`https://calendar.google.com/calendar/render?action=TEMPLATE&text=\${encodeURIComponent('⚽ '+m.label)}&dates=\${s}/\${e}&location=\${encodeURIComponent(m.venue)}&details=\${encodeURIComponent('FIFA World Cup 2026 - Grupo K')}\`;
+  }
+
+  const TABS=[
+    {id:"col",label:"🇨🇴 Colombia"},
+    {id:"sim",label:"⚡ Simulación"},
+    {id:"grupos",label:"Grupos"},
+    {id:"r32",label:"Ronda 32"},
+    {id:"r16",label:"Octavos"},
+    {id:"qf",label:"Cuartos"},
+    {id:"sf",label:"Semis"},
+    {id:"final",label:"🏆 Final"},
+  ];
+
+  const getMatches=ids=>ALL_KO.filter(m=>ids.includes(m.id));
+
+  // Champion (from actual or pred)
+  const actualChampion=koActual.M104?.s1!==null&&koActual.M104?.s1!==undefined
+    ?(koActual.M104.s1>koActual.M104.s2?koWinners.M104_a:koWinners.M104_b):null;
+  const predChampion=koWinners.M104||simData?.table?.[0]?.team||"España";
+
+  return(
+    <>
+      <style>{CSS}</style>
+      <div className="app">
+        <div className="hdr">
+          <div className="title">FIFA World Cup 2026</div>
+          <div className="sub">Simulación Monte Carlo + Tracker Integrado</div>
+          <div className="badges">
+            <span className="badge badge-gold">Elo + Poisson</span>
+            <span className="badge badge-blue">10,000 simulaciones</span>
+            <span className="badge badge-green">Opta calibrado</span>
+            <span className="badge badge-gold">48 selecciones · 104 partidos</span>
+          </div>
+          <div className="hdr-tools">
+            {savedAt && <span className="saved-lbl">💾 Guardado {savedAt}</span>}
+            <button className="reset-btn" onClick={()=>{
+              if(window.confirm('¿Borrar todos los resultados y simulación guardados?')){
+                LS.clear(); setGroupActual({}); setKoActual({}); setSimData(null); setSavedAt(null);
+              }
+            }}>🗑 Borrar datos</button>
+          </div>
+        </div>
+
+        {/* Accuracy bar */}
+        <div className="acc">
+          <div className="ap ap-e">✓ {accStats.exact}</div>
+          <div className="ap ap-c">~ {accStats.correct}</div>
+          <div className="ap ap-w">✗ {accStats.wrong}</div>
+          <div className="ap ap-p">⏳ {accStats.pending}</div>
+          {accStats.pct!==null&&<div className="acc-pct">{accStats.pct}%</div>}
+          <div className="sim-state">{simData?`Sim: ${simData.nSims.toLocaleString()} iter. · Top: ${simData.table[0]?.team||"—"} ${simData.table[0]?.winPct.toFixed(1)||"—"}%`:"▶ Ejecuta la simulación"}</div>
+        </div>
+
+        <div className="tabs">{TABS.map(t=>(
+          <button key={t.id} className={`tab${tab===t.id?" active":""}`} onClick={()=>setTab(t.id)}>{t.label}</button>
+        ))}</div>
+
+        <div className="content">
+
+          {/* ── SIMULACIÓN ── */}
+          {tab==="sim"&&(
+            <>
+              <div className="sim-panel">
+                <div className="sim-row">
+                  <button className="run-btn" onClick={runSim} disabled={running}>
+                    {running?`SIMULANDO ${progress}%`:"▶  EJECUTAR SIMULACIÓN"}
+                  </button>
+                  {running&&(
+                    <div className="prog-wrap">
+                      <div className="prog-lbl">{Math.round(progress/100*N).toLocaleString()} / {N.toLocaleString()} torneos</div>
+                      <div className="prog-bar"><div className="prog-fill" style={{width:`${progress}%`}}/></div>
+                    </div>
+                  )}
+                  {!running&&simData&&(
+                    <div style={{fontSize:12,color:"var(--muted)"}}>
+                      ✓ Simulación completada — el cuadro se ha actualizado automáticamente
+                    </div>
+                  )}
+                </div>
+                {simData&&(
+                  <div className="top5">
+                    {simData.table.slice(0,8).map((t,i)=>(
+                      <div className="t5-pill" key={t.team}>
+                        <span className="rnk">{i+1}</span>
+                        <span style={{fontSize:15}}>{f(t.team)}</span>
+                        <span style={{fontSize:12,fontWeight:600}}>{t.team}</span>
+                        <span className="t5-pct" style={{color:tColor(t.team)}}>{t.winPct.toFixed(1)}%</span>
+                        {t.opta&&<span className="t5-vs">Opta:{t.opta}%</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {simData?(
+                <>
+                  <div className="ph-title">Tabla Completa de Probabilidades <span className="ph-date">{N.toLocaleString()} iteraciones Monte Carlo</span></div>
+                  <div className="prob-wrap">
+                    <table className="prob-tbl">
+                      <thead><tr>
+                        <th>#</th><th>Selección</th><th>Elo</th>
+                        <th>P(QF)</th><th>P(SF)</th><th>P(Final)</th><th>P(Campeón)</th>
+                      </tr></thead>
+                      <tbody>
+                        {simData.table.filter(t=>t.winPct>0.05||t.semiPct>0.5).map((t,i)=>(
+                          <tr key={t.team} className={i===0?"hl1":i===1?"hl2":""}>
+                            <td><span className="rnk">{i+1}</span></td>
+                            <td><div className="tc-sm"><span style={{fontSize:14}}>{f(t.team)}</span><span style={{fontWeight:600}}>{t.team}</span></div></td>
+                            <td><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:"var(--muted)"}}>{t.elo}</span></td>
+                            <td><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11}}>{t.r8Pct.toFixed(0)}%</span></td>
+                            <td><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11}}>{t.semiPct.toFixed(1)}%</span></td>
+                            <td><span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11}}>{t.finalPct.toFixed(1)}%</span></td>
+                            <td>
+                              <div className="bar-cell">
+                                <div className="bar-bg"><div className="bar-f" style={{width:`${t.winPct/simData.table[0].winPct*100}%`,background:tColor(t.team)}}/></div>
+                                <span className="p-val" style={{color:tColor(t.team)}}>{t.winPct.toFixed(1)}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ):(
+                <div className="no-sim">
+                  Ejecuta la simulación para generar las predicciones estadísticas.<br/>
+                  El cuadro se llenará automáticamente con los equipos más probables<br/>
+                  en cada partido basado en 10,000 simulaciones del torneo.
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── GRUPOS ── */}
+          {tab==="grupos"&&(
+            <>
+              <div className="note-box">
+                📊 <strong>Predicciones en dorado</strong> = modelo Elo+Poisson · <strong>Campos editables</strong> = resultado real · La tabla actualiza automáticamente · Indicadores: <span style={{color:"var(--green)"}}>●</span> exacto <span style={{color:"var(--blue)"}}>●</span> ganador correcto <span style={{color:"var(--red)"}}>●</span> incorrecto
+              </div>
+              <div className="grp-grid">
+                {LETTERS.map(g=>(
+                  <GroupCard key={g} letter={g} actualScores={groupActual}
+                    onScore={handleGrpScore} predStandings={predStandings}/>
+                ))}
+              </div>
+              <div className="b3-box">
+                <div className="b3-title">🥉 Mejores 8 Terceros (calculados de resultados reales ingresados)</div>
+                <div className="b3-list">
+                  {actualBest3.filter(t=>t.name!=="?").length>0
+                    ?actualBest3.filter(t=>t.name!=="?").map(t=>(
+                      <div key={t.g} className="b3-pill">{f(t.name)} {t.name} <span style={{fontSize:9,color:"rgba(232,180,0,.4)"}}>G{t.g} · {t.pts||0}pts</span></div>
+                    ))
+                    :<div style={{fontSize:12,color:"var(--muted)"}}>Ingresa resultados de grupos para ver los mejores terceros actuales</div>
+                  }
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── FASES KO ── */}
+          {["r32","r16","qf","sf"].map(phase=>{
+            const cfg={
+              r32:{ids:R32.map(m=>m.id),label:"Ronda de 32 — Dieciseisavos",date:"28 jun – 3 jul · 16 partidos"},
+              r16:{ids:R16.map(m=>m.id),label:"Octavos de Final",date:"4 – 7 jul · 8 partidos"},
+              qf:{ids:QF.map(m=>m.id),label:"Cuartos de Final",date:"9 – 11 jul · 4 partidos"},
+              sf:{ids:[...SF.map(m=>m.id),"M103"],label:"Semifinales + 3° Lugar",date:"14 – 18 jul · 3 partidos"},
+            }[phase];
+            return tab===phase&&(
+              <div key={phase}>
+                <div className="ph-title">{cfg.label}<span className="ph-date">{cfg.date}</span></div>
+                <div className="note-box">
+                  {simData?"Los equipos reflejan la predicción estadística del modelo Monte Carlo":"Ejecuta la simulación para poblar las predicciones · Los equipos se actualizan al ingresar resultados de grupos"}
+                  {" · "}Predicción en dorado · Edita el resultado real debajo
+                </div>
+                <div className="ko-grid">
+                  {getMatches(cfg.ids).map(m=>{
+                    const{teams,scores,winPcts}=getPredForKO(m);
+                    return(
+                      <KOCard key={m.id} match={m} predTeams={teams} predScores={scores}
+                        winPcts={winPcts} actualStandings={actualStandings}
+                        koActual={koActual} koWinners={koWinners}
+                        onScore={handleKOScore} onNote={handleKONote}/>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* ── FINAL ── */}
+          {tab==="col"&&(
+            <div>
+              {/* BANNER CON COUNTDOWN */}
+              <div className="col-banner">
+                <div className="col-title">¡Vamos Colombia! 🇨🇴</div>
+                {nextColMatch && msToNext !== null ? (
+                  <>
+                    <div className="col-next">Próximo partido: <strong>{nextColMatch.label}</strong></div>
+                    <div className="col-countdown">{msToCountdown(msToNext)}</div>
+                    <div style={{fontSize:11,color:'var(--muted)',marginTop:4}}>{nextColMatch.venue}</div>
+                  </>
+                ) : (
+                  <div style={{fontSize:13,color:'var(--muted)'}}>
+                    {COL_MATCHES[2].dt.getTime() < now ? '✓ Fase de grupos completada' : 'Próximo partido próximamente'}
+                  </div>
+                )}
+                {/* ALERTAS */}
+                <div style={{marginTop:12,display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
+                  {notifPerm!=='granted' ? (
+                    <button className="notif-btn primary" onClick={scheduleNotifications}>
+                      🔔 Activar alertas de Colombia
+                    </button>
+                  ) : notifScheduled ? (
+                    <div className="notif-ok">✓ Alertas programadas (30 min antes de cada partido)</div>
+                  ) : (
+                    <div className="notif-ok">✓ Notificaciones activas</div>
+                  )}
+                </div>
+                <div style={{fontSize:10,color:'rgba(255,255,255,.2)',marginTop:6}}>
+                  Mantén la app abierta para recibir la alerta · Hora Colombia (COT)
+                </div>
+              </div>
+
+              {/* PARTIDOS DE COLOMBIA - GRUPO */}
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:3,color:'var(--gold)',
+                marginBottom:10,paddingBottom:7,borderBottom:'1px solid rgba(232,180,0,.15)'}}>
+                Fase de Grupos — Grupo K
+              </div>
+              {COL_MATCHES.map((m,i)=>{
+                const matchKey = ['K_1','K_5','K_2'][i];
+                const mi = [1,5,2][i];
+                const act = groupActual[matchKey]||[null,null];
+                const [ps1,ps2] = predScore('Colombia', ['Uzbekistán','RD Congo','Portugal'][i]);
+                const acc = matchAcc(ps1, ps2, act[0], act[1]);
+                const status = m.dt.getTime() < now ? 'played' : 'upcoming';
+                const opponents = [
+                  {flag:'🇺🇿', name:'Uzbekistán'},
+                  {flag:'🇨🇩', name:'RD Congo'},
+                  {flag:'🇵🇹', name:'Portugal'},
+                ][i];
+                return(
+                  <div key={i} className={`col-match-card ${status}`}>
+                    <div className="col-mhdr">
+                      <div>
+                        <span className="dt">{SCH[matchKey]?.d} · {SCH[matchKey]?.h} COL</span>
+                        <span style={{marginLeft:8,fontSize:10,color:'var(--muted)'}}>
+                          {'J'+(i+1)} · {SCH[matchKey]?.v}
+                        </span>
+                      </div>
+                      <Dot status={acc}/>
+                    </div>
+                    <div className="col-mbody">
+                      <div className="col-mteams">
+                        <span>🇨🇴 Colombia</span>
+                        <span className="vs">vs</span>
+                        <span>{opponents.flag} {opponents.name}</span>
+                      </div>
+                      <div style={{display:'flex',alignItems:'center',gap:6}}>
+                        <div style={{fontSize:11,color:'var(--muted)'}}>Pred:</div>
+                        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,
+                          color:'rgba(232,180,0,.6)',padding:'2px 6px',background:'rgba(232,180,0,.08)',borderRadius:4}}>
+                          {ps1}–{ps2}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{padding:'6px 12px',display:'flex',alignItems:'center',gap:8,
+                      background:'rgba(255,255,255,.03)',borderTop:'1px solid var(--border)'}}>
+                      <span style={{fontSize:10,textTransform:'uppercase',letterSpacing:1,color:'var(--muted)'}}>
+                        Real:
+                      </span>
+                      <div style={{display:'flex',alignItems:'center',gap:3}}>
+                        <ScoreIn val={act[0]} onChange={v=>{const n=[...act];n[0]=v;handleGrpScore('K',mi,n);}}/>
+                        <span style={{color:'var(--muted)',fontSize:11}}>–</span>
+                        <ScoreIn val={act[1]} onChange={v=>{const n=[...act];n[1]=v;handleGrpScore('K',mi,n);}}/>
+                      </div>
+                      <a className="notif-btn cal" href={calUrl(m)} target="_blank" rel="noopener">
+                        📅 Agregar al calendario
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* CAMINO POTENCIAL EN ELIMINATORIAS */}
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:3,color:'var(--gold)',
+                margin:'16px 0 10px',paddingBottom:7,borderBottom:'1px solid rgba(232,180,0,.15)'}}>
+                Camino Potencial de Colombia
+              </div>
+              <div className="ko-path-card">
+                <div className="ko-path-title">Si Colombia clasifica (horario Colombia)</div>
+                {[
+                  {ronda:'Ronda de 32', pos:'1°K', match:'M87', dt:'3 jul · 20:30', venue:'Arrowhead, KC', rival:'3° Grupo D/E/I/J/L'},
+                  {ronda:'Ronda de 32', pos:'2°K', match:'M83', dt:'2 jul · 18:00', venue:'BMO Field, Toronto', rival:'2° Grupo L'},
+                  {ronda:'Octavos',     pos:'', match:'M95/M96', dt:'7 jul', venue:'', rival:''},
+                  {ronda:'Cuartos',     pos:'', match:'M99/M100',dt:'11 jul', venue:'', rival:''},
+                  {ronda:'Semifinal',   pos:'', match:'M101/M102',dt:'14-15 jul', venue:'', rival:''},
+                  {ronda:'Final 🏆',   pos:'', match:'M104', dt:'19 jul · 14:00', venue:'MetLife, N.Jersey', rival:''},
+                ].map((r,i)=>(
+                  <div key={i} className="ko-path-row">
+                    <span style={{minWidth:90,fontWeight:600,fontSize:12}}>{r.ronda}</span>
+                    <span style={{color:'var(--muted)',fontSize:11,flex:1}}>{r.rival||'Según resultados'}</span>
+                    <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:'var(--gold)'}}>{r.dt}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {tab==="final"&&(
+            <>
+              <div className="final-banner">
+                <div className="fb-lbl">Gran Final · MetLife Stadium, N. Jersey · 19 Julio 2026</div>
+                <div className="fb-teams">
+                  {f(koWinners.M104_a||"?")} {koWinners.M104_a||"?"}{" "}
+                  <span style={{color:"var(--muted)"}}>vs</span>{" "}
+                  {koWinners.M104_b||"?"} {f(koWinners.M104_b||"?")}
+                </div>
+                {actualChampion
+                  ?<div style={{marginTop:10}}>
+                    <div style={{fontSize:12,color:"var(--muted)",letterSpacing:2,textTransform:"uppercase"}}>Campeón del Mundo</div>
+                    <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:"clamp(28px,6vw,48px)",letterSpacing:3,color:"var(--gold)",textShadow:"0 0 20px rgba(232,180,0,.4)"}}>
+                      {f(actualChampion)} {actualChampion}
+                    </div>
+                  </div>
+                  :<div className="fb-preds">
+                    {[koWinners.M104_a,koWinners.M104_b].map((t,i)=>{
+                      const row=simData?.table?.find(r=>r.team===t);
+                      return t&&t!=="?"&&(
+                        <div key={i} className="fb-p">
+                          <div className="fb-pct" style={{color:tColor(t)}}>{row?.winPct.toFixed(1)||"—"}%</div>
+                          <div className="fb-team">{f(t)} {t}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                }
+                <div className="fb-note">
+                  Predicción modelo: {predChampion} {f(predChampion)} · EA Sports: España 🇪🇸 · Opta: España 16.1%
+                </div>
+              </div>
+
+              <div className="ko-grid">
+                {getMatches(["M104"]).map(m=>{
+                  const{teams,scores,winPcts}=getPredForKO(m);
+                  return<KOCard key={m.id} match={m} predTeams={teams} predScores={scores}
+                    winPcts={winPcts} actualStandings={actualStandings}
+                    koActual={koActual} koWinners={koWinners}
+                    onScore={handleKOScore} onNote={handleKONote} isFinal/>;
+                })}
+              </div>
+
+              <div className="summary-grid">
+                {[
+                  {l:"✓ Exactos",v:accStats.exact,c:"var(--green)"},
+                  {l:"~ Ganadores",v:accStats.correct,c:"var(--blue)"},
+                  {l:"✗ Fallados",v:accStats.wrong,c:"var(--red)"},
+                  {l:"⏳ Pendientes",v:accStats.pending,c:"var(--muted)"},
+                  {l:"Total jugados",v:accStats.total,c:"var(--text)"},
+                  {l:"Efectividad",v:accStats.pct!==null?`${accStats.pct}%`:"—",c:"var(--gold)"},
+                ].map(({l,v,c})=>(
+                  <div key={l} className="sum-card">
+                    <div className="sum-lbl">{l}</div>
+                    <div className="sum-val" style={{color:c}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+        </div>
+      </div>
+    </>
+  );
+}
+
+
+    /* ── Render ── */
+    try {
+      const container = document.getElementById('root');
+      const rootEl = ReactDOM.createRoot(container);
+      rootEl.render(<App />);
+      document.getElementById('loading').style.display = 'none';
+    } catch(err) {
+      document.getElementById('loading').innerHTML =
+        '<div style="color:#ef5350;font-family:monospace;padding:20px;max-width:90vw;word-break:break-all">' +
+        '<div style="font-size:24px;margin-bottom:12px">⚠️ Error al cargar</div>' +
+        '<div style="font-size:13px;opacity:.8">Abre en Chrome o despliega en GitHub Pages</div>' +
+        '<div style="font-size:11px;margin-top:10px;opacity:.5">' + err.message + '</div>' +
+        '</div>';
+    }
+  </script>
+
+  <script>
+    /* ── Service Worker (PWA offline) ── */
+    // SW solo en producción (no en localhost ni en sandbox de desarrollo)
+    const isProd = location.protocol === 'https:' &&
+                   !location.hostname.includes('claudeusercontent.com') &&
+                   !location.hostname.includes('localhost');
+    if ('serviceWorker' in navigator && isProd) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('SW registrado:', reg.scope))
+          .catch(err => console.warn('SW no disponible:', err.message));
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="64" fill="#07090b"/>
+  <rect width="512" height="170" rx="0" fill="#e8b400" opacity="0.08"/>
+  <text x="50%" y="52%" font-size="266.24px" text-anchor="middle" dominant-baseline="middle">⚽</text>
+  <text x="50%" y="82%" font-size="61.44px" text-anchor="middle" fill="#e8b400" font-family="Arial" font-weight="bold" letter-spacing="1">2026</text>
+</svg>
