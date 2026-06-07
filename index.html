@@ -68,8 +68,7 @@
   <script>
 // React 18 UMD globals: React, ReactDOM already loaded from CDN above
 (function() {
-  "use strict";
-  try {
+try {
 /* ── Hooks desde global React (UMD) ── */
 const {
   useState,
@@ -2060,7 +2059,7 @@ function App() {
   }, [simData]);
 
   // Run Monte Carlo
-  const runSim = useCallback(async () => {
+  const runSim = useCallback(() => {
     setRunning(true);
     setProgress(0);
     setSimData(null);
@@ -2069,47 +2068,49 @@ function App() {
       finals = {},
       r8c = {},
       groupPos = {};
-    const BS = 200;
-    for (let i = 0; i < N; i += BS) {
-      await new Promise(r => setTimeout(r, 0));
-      const end = Math.min(i + BS, N);
-      for (let j = i; j < end; j++) {
-        const {
-          champ,
-          finalists,
-          semifinalists,
-          r8
-        } = runOne(groupPos);
-        wins[champ] = (wins[champ] || 0) + 1;
-        finalists.forEach(t => {
-          if (t) finals[t] = (finals[t] || 0) + 1;
-        });
-        semifinalists.forEach(t => {
-          if (t) semis[t] = (semis[t] || 0) + 1;
-        });
-        r8.forEach(t => {
-          if (t) r8c[t] = (r8c[t] || 0) + 1;
-        });
+    const TOTAL = 5000;
+    const CHUNK = 200;
+    let done = 0;
+    function runChunk() {
+      const end = Math.min(done + CHUNK, TOTAL);
+      for (let i = done; i < end; i++) {
+        try {
+          const res = runOne(groupPos);
+          if (res.champ) wins[res.champ] = (wins[res.champ] || 0) + 1;
+          if (res.finalists) res.finalists.forEach(t => {
+            if (t) finals[t] = (finals[t] || 0) + 1;
+          });
+          if (res.semifinalists) res.semifinalists.forEach(t => {
+            if (t) semis[t] = (semis[t] || 0) + 1;
+          });
+          if (res.r8) res.r8.forEach(t => {
+            if (t) r8c[t] = (r8c[t] || 0) + 1;
+          });
+        } catch (e) {/* skip bad sim */}
       }
-      setProgress(Math.round(Math.min(i + BS, N) / N * 100));
+      done = end;
+      setProgress(Math.round(done / TOTAL * 100));
+      if (done < TOTAL) {
+        requestAnimationFrame(runChunk);
+      } else {
+        const table = Object.keys(ELO).filter((v, i, a) => a.indexOf(v) === i).map(t => ({
+          team: t,
+          elo: elo(t),
+          winPct: (wins[t] || 0) / TOTAL * 100,
+          finalPct: (finals[t] || 0) / TOTAL * 100,
+          semiPct: (semis[t] || 0) / TOTAL * 100,
+          r8Pct: (r8c[t] || 0) / TOTAL * 100,
+          opta: OPTA[t] || null
+        })).sort((a, b) => b.winPct - a.winPct);
+        setSimData({
+          table,
+          groupPos,
+          nSims: TOTAL
+        });
+        setRunning(false);
+      }
     }
-    const table = Object.keys(ELO).filter((t, _, arr) => arr.indexOf(t) === arr.lastIndexOf(t) || true).filter((v, i, a) => a.indexOf(v) === i).map(t => ({
-      team: t,
-      elo: elo(t),
-      winPct: (wins[t] || 0) / N * 100,
-      finalPct: (finals[t] || 0) / N * 100,
-      semiPct: (semis[t] || 0) / N * 100,
-      r8Pct: (r8c[t] || 0) / N * 100,
-      opta: OPTA[t] || null
-    })).sort((a, b) => b.winPct - a.winPct);
-    const simResult = {
-      table,
-      groupPos,
-      nSims: N
-    };
-    setSimData(simResult);
-    setRunning(false);
-    setProgress(100);
+    requestAnimationFrame(runChunk);
   }, []);
 
   // Derived predicted standings from sim
@@ -2998,15 +2999,14 @@ try {
 } catch (err) {
   document.getElementById('loading').innerHTML = '<div style="color:#ef5350;font-family:monospace;padding:20px;max-width:90vw;word-break:break-all">' + '<div style="font-size:24px;margin-bottom:12px">⚠️ Error al cargar</div>' + '<div style="font-size:13px;opacity:.8">Abre en Chrome o despliega en GitHub Pages</div>' + '<div style="font-size:11px;margin-top:10px;opacity:.5">' + err.message + '</div>' + '</div>';
 }
-
-  } catch(err) {
-    document.getElementById('loading').innerHTML =
-      '<div style="color:#ef5350;font-family:monospace;padding:20px;word-break:break-all">' +
-      '<div style="font-size:20px;margin-bottom:8px">⚠️ Error al cargar</div>' +
-      '<div style="font-size:12px;opacity:.7">' + err.message + '</div>' +
-      '</div>';
-    console.error('App error:', err);
-  }
+} catch(err) {
+  document.getElementById('loading').innerHTML =
+    '<div style="color:#ef5350;font-family:monospace;padding:20px;word-break:break-all">' +
+    '<div style="font-size:20px;margin-bottom:8px">&#9888; Error al cargar</div>' +
+    '<div style="font-size:12px;opacity:.7">' + err.message + '</div>' +
+    '</div>';
+  console.error('App error:', err);
+}
 })();
 </script>
 
