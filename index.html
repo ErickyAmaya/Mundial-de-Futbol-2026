@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <meta name="apple-mobile-web-app-title" content="Mundial 2026"/>
-  <meta name="description" content="Tracker de predicciones Monte Carlo para el FIFA World Cup 2026. Modelo Elo + Poisson, 10,000 simulaciones."/>
+  <meta name="description" content="Tracker de predicciones Monte Carlo para el FIFA World Cup 2026. Modelo Elo + Poisson, 5,000 simulaciones."/>
 
   <title>Mundial 2026 — Tracker &amp; Simulación</title>
 
@@ -1361,6 +1361,975 @@ function KOCard({
 }
 
 /* ══════════════ APP ══════════════ */
+/* ── Calendario oficial FIFA (horario Colombia COT = ET-1h) ─────────── */
+const SCH = {
+  // GRUPO A  (México=0, Corea Sur=1, Chequia=2, Sudáfrica=3)
+  A_0: {
+    d: "11 jun",
+    h: "14:00",
+    v: "Azteca, CDMX"
+  },
+  A_1: {
+    d: "11 jun",
+    h: "21:00",
+    v: "Akron, Guadalajara"
+  },
+  A_2: {
+    d: "18 jun",
+    h: "20:00",
+    v: "Akron, Guadalajara"
+  },
+  // México vs Corea Sur
+  A_3: {
+    d: "18 jun",
+    h: "11:00",
+    v: "Merc-Benz, Atlanta"
+  },
+  // Chequia vs Sudáfrica
+  A_4: {
+    d: "24 jun",
+    h: "20:00",
+    v: "Azteca, CDMX"
+  },
+  A_5: {
+    d: "24 jun",
+    h: "20:00",
+    v: "BBVA, Monterrey"
+  },
+  // GRUPO B  (Suiza=0, Canadá=1, Bosnia=2, Qatar=3)
+  B_0: {
+    d: "13 jun",
+    h: "14:00",
+    v: "Levis Stadium, S.Clara"
+  },
+  // Qatar vs Suiza
+  B_1: {
+    d: "12 jun",
+    h: "14:00",
+    v: "BMO Field, Toronto"
+  },
+  // Canadá vs Bosnia
+  B_2: {
+    d: "24 jun",
+    h: "14:00",
+    v: "BC Place, Vancouver"
+  },
+  // Suiza vs Canadá
+  B_3: {
+    d: "24 jun",
+    h: "14:00",
+    v: "Lumen Field, Seattle"
+  },
+  // Bosnia vs Qatar
+  B_4: {
+    d: "18 jun",
+    h: "14:00",
+    v: "SoFi Stadium, LA"
+  },
+  // Suiza vs Bosnia
+  B_5: {
+    d: "18 jun",
+    h: "17:00",
+    v: "BC Place, Vancouver"
+  },
+  // Canadá vs Qatar
+  // GRUPO C  (Brasil=0, Marruecos=1, Escocia=2, Haití=3)
+  C_0: {
+    d: "19 jun",
+    h: "20:00",
+    v: "Lincoln, Filadelfia"
+  },
+  // Brasil vs Haití
+  C_1: {
+    d: "19 jun",
+    h: "17:00",
+    v: "Gillette, Boston"
+  },
+  // Escocia vs Marruecos
+  C_2: {
+    d: "13 jun",
+    h: "17:00",
+    v: "MetLife, N.Jersey"
+  },
+  // Brasil vs Marruecos
+  C_3: {
+    d: "13 jun",
+    h: "20:00",
+    v: "Gillette, Boston"
+  },
+  // Haití vs Escocia
+  C_4: {
+    d: "24 jun",
+    h: "17:00",
+    v: "Hard Rock, Miami"
+  },
+  // Escocia vs Brasil
+  C_5: {
+    d: "24 jun",
+    h: "17:00",
+    v: "Merc-Benz, Atlanta"
+  },
+  // Marruecos vs Haití
+  // GRUPO D  (Estados Unidos=0, Turquía=1, Paraguay=2, Australia=3)
+  D_0: {
+    d: "19 jun",
+    h: "14:00",
+    v: "Lumen Field, Seattle"
+  },
+  // EEUU vs Australia
+  D_1: {
+    d: "20 jun",
+    h: "23:00",
+    v: "Levis Stadium, S.Clara"
+  },
+  // Turquía vs Paraguay
+  D_2: {
+    d: "25 jun",
+    h: "21:00",
+    v: "SoFi Stadium, LA"
+  },
+  // Turquía vs EEUU
+  D_3: {
+    d: "25 jun",
+    h: "21:00",
+    v: "Levis Stadium, S.Clara"
+  },
+  // Paraguay vs Australia
+  D_4: {
+    d: "12 jun",
+    h: "20:00",
+    v: "SoFi Stadium, LA"
+  },
+  // EEUU vs Paraguay
+  D_5: {
+    d: "14 jun",
+    h: "23:00",
+    v: "BC Place, Vancouver"
+  },
+  // Australia vs Turquía
+  // GRUPO E  (Alemania=0, Ecuador=1, Costa de Marfil=2, Curazao=3)
+  E_0: {
+    d: "14 jun",
+    h: "12:00",
+    v: "NRG Stadium, Houston"
+  },
+  // Alemania vs Curazao
+  E_1: {
+    d: "14 jun",
+    h: "18:00",
+    v: "Lincoln, Filadelfia"
+  },
+  // Costa de Marfil vs Ecuador
+  E_2: {
+    d: "20 jun",
+    h: "15:00",
+    v: "BMO Field, Toronto"
+  },
+  // Alemania vs Costa de Marfil
+  E_3: {
+    d: "20 jun",
+    h: "19:00",
+    v: "Arrowhead, KC"
+  },
+  // Ecuador vs Curazao
+  E_4: {
+    d: "25 jun",
+    h: "15:00",
+    v: "MetLife, N.Jersey"
+  },
+  // Ecuador vs Alemania
+  E_5: {
+    d: "25 jun",
+    h: "15:00",
+    v: "Lincoln, Filadelfia"
+  },
+  // Curazao vs Costa de Marfil
+  // GRUPO F  (Países Bajos=0, Japón=1, Suecia=2, Túnez=3)
+  F_0: {
+    d: "20 jun",
+    h: "12:00",
+    v: "NRG Stadium, Houston"
+  },
+  // PB vs Suecia
+  F_1: {
+    d: "21 jun",
+    h: "23:00",
+    v: "BBVA, Monterrey"
+  },
+  // Túnez vs Japón
+  F_2: {
+    d: "14 jun",
+    h: "15:00",
+    v: "AT&T Stadium, Dallas"
+  },
+  // PB vs Japón
+  F_3: {
+    d: "14 jun",
+    h: "21:00",
+    v: "BBVA, Monterrey"
+  },
+  // Suecia vs Túnez
+  F_4: {
+    d: "25 jun",
+    h: "18:00",
+    v: "AT&T Stadium, Dallas"
+  },
+  // Japón vs Suecia
+  F_5: {
+    d: "25 jun",
+    h: "18:00",
+    v: "Arrowhead, KC"
+  },
+  // Túnez vs PB
+  // GRUPO G  (Bélgica=0, Irán=1, Egipto=2, Nueva Zelanda=3)
+  G_0: {
+    d: "21 jun",
+    h: "14:00",
+    v: "SoFi Stadium, LA"
+  },
+  // Bélgica vs Irán
+  G_1: {
+    d: "21 jun",
+    h: "20:00",
+    v: "BC Place, Vancouver"
+  },
+  // Nueva Zelanda vs Egipto
+  G_2: {
+    d: "27 jun",
+    h: "22:00",
+    v: "Lumen Field, Seattle"
+  },
+  // Egipto vs Irán
+  G_3: {
+    d: "27 jun",
+    h: "22:00",
+    v: "BC Place, Vancouver"
+  },
+  // Nueva Zelanda vs Bélgica
+  G_4: {
+    d: "15 jun",
+    h: "14:00",
+    v: "Lumen Field, Seattle"
+  },
+  // Bélgica vs Egipto
+  G_5: {
+    d: "15 jun",
+    h: "20:00",
+    v: "SoFi Stadium, LA"
+  },
+  // Irán vs Nueva Zelanda
+  // GRUPO H  (España=0, Uruguay=1, Arabia Saudí=2, Cabo Verde=3)
+  H_0: {
+    d: "15 jun",
+    h: "11:00",
+    v: "Merc-Benz, Atlanta"
+  },
+  // España vs Cabo Verde
+  H_1: {
+    d: "15 jun",
+    h: "17:00",
+    v: "Hard Rock, Miami"
+  },
+  // Arabia Saudí vs Uruguay
+  H_2: {
+    d: "26 jun",
+    h: "19:00",
+    v: "Akron, Guadalajara"
+  },
+  // Uruguay vs España
+  H_3: {
+    d: "26 jun",
+    h: "19:00",
+    v: "NRG Stadium, Houston"
+  },
+  // Cabo Verde vs Arabia Saudí
+  H_4: {
+    d: "21 jun",
+    h: "11:00",
+    v: "Merc-Benz, Atlanta"
+  },
+  // España vs Arabia Saudí
+  H_5: {
+    d: "21 jun",
+    h: "17:00",
+    v: "Hard Rock, Miami"
+  },
+  // Uruguay vs Cabo Verde
+  // GRUPO I  (Francia=0, Senegal=1, Noruega=2, Iraq=3)
+  I_0: {
+    d: "22 jun",
+    h: "16:00",
+    v: "Lincoln, Filadelfia"
+  },
+  // Francia vs Iraq
+  I_1: {
+    d: "22 jun",
+    h: "19:00",
+    v: "MetLife, N.Jersey"
+  },
+  // Noruega vs Senegal
+  I_2: {
+    d: "16 jun",
+    h: "14:00",
+    v: "MetLife, N.Jersey"
+  },
+  // Francia vs Senegal
+  I_3: {
+    d: "16 jun",
+    h: "17:00",
+    v: "Gillette, Boston"
+  },
+  // Iraq vs Noruega
+  I_4: {
+    d: "26 jun",
+    h: "14:00",
+    v: "Gillette, Boston"
+  },
+  // Noruega vs Francia
+  I_5: {
+    d: "26 jun",
+    h: "14:00",
+    v: "BMO Field, Toronto"
+  },
+  // Senegal vs Iraq
+  // GRUPO J  (Argentina=0, Austria=1, Argelia=2, Jordania=3)
+  J_0: {
+    d: "27 jun",
+    h: "21:00",
+    v: "AT&T Stadium, Dallas"
+  },
+  // Jordania vs Argentina
+  J_1: {
+    d: "27 jun",
+    h: "21:00",
+    v: "Arrowhead, KC"
+  },
+  // Argelia vs Austria
+  J_2: {
+    d: "22 jun",
+    h: "12:00",
+    v: "AT&T Stadium, Dallas"
+  },
+  // Argentina vs Austria
+  J_3: {
+    d: "22 jun",
+    h: "22:00",
+    v: "Levis Stadium, S.Clara"
+  },
+  // Jordania vs Argelia
+  J_4: {
+    d: "16 jun",
+    h: "20:00",
+    v: "Arrowhead, KC"
+  },
+  // Argentina vs Argelia
+  J_5: {
+    d: "17 jun",
+    h: "23:00",
+    v: "Levis Stadium, S.Clara"
+  },
+  // Austria vs Jordania
+  // GRUPO K  (Portugal=0, Colombia=1, Uzbekistán=2, RD Congo=3) 🇨🇴
+  K_0: {
+    d: "17 jun",
+    h: "12:00",
+    v: "NRG Stadium, Houston"
+  },
+  // Portugal vs RD Congo
+  K_1: {
+    d: "17 jun",
+    h: "21:00",
+    v: "Azteca, CDMX",
+    col: true
+  },
+  // 🇨🇴 Colombia vs Uzbekistán
+  K_2: {
+    d: "27 jun",
+    h: "18:30",
+    v: "Hard Rock, Miami",
+    col: true
+  },
+  // 🇨🇴 Colombia vs Portugal
+  K_3: {
+    d: "27 jun",
+    h: "18:30",
+    v: "Merc-Benz, Atlanta"
+  },
+  // RD Congo vs Uzbekistán
+  K_4: {
+    d: "23 jun",
+    h: "12:00",
+    v: "NRG Stadium, Houston"
+  },
+  // Portugal vs Uzbekistán
+  K_5: {
+    d: "23 jun",
+    h: "21:00",
+    v: "Akron, Guadalajara",
+    col: true
+  },
+  // 🇨🇴 Colombia vs RD Congo
+  // GRUPO L  (Inglaterra=0, Croacia=1, Ghana=2, Panamá=3)
+  L_0: {
+    d: "27 jun",
+    h: "16:00",
+    v: "MetLife, N.Jersey"
+  },
+  // Panamá vs Inglaterra
+  L_1: {
+    d: "27 jun",
+    h: "16:00",
+    v: "Lincoln, Filadelfia"
+  },
+  // Croacia vs Ghana
+  L_2: {
+    d: "17 jun",
+    h: "15:00",
+    v: "AT&T Stadium, Dallas"
+  },
+  // Inglaterra vs Croacia
+  L_3: {
+    d: "17 jun",
+    h: "18:00",
+    v: "BMO Field, Toronto"
+  },
+  // Ghana vs Panamá
+  L_4: {
+    d: "23 jun",
+    h: "15:00",
+    v: "Gillette, Boston"
+  },
+  // Inglaterra vs Ghana
+  L_5: {
+    d: "23 jun",
+    h: "18:00",
+    v: "BMO Field, Toronto"
+  },
+  // Panamá vs Croacia
+  // FASE ELIMINATORIA (horario Colombia)
+  M73: {
+    d: "28 jun",
+    h: "14:00",
+    v: "SoFi Stadium, LA"
+  },
+  M74: {
+    d: "29 jun",
+    h: "15:30",
+    v: "Gillette, Boston"
+  },
+  M75: {
+    d: "29 jun",
+    h: "20:00",
+    v: "BBVA, Monterrey"
+  },
+  M76: {
+    d: "29 jun",
+    h: "12:00",
+    v: "NRG Stadium, Houston"
+  },
+  M77: {
+    d: "30 jun",
+    h: "16:00",
+    v: "MetLife, N.Jersey"
+  },
+  M78: {
+    d: "30 jun",
+    h: "12:00",
+    v: "AT&T Stadium, Dallas"
+  },
+  M79: {
+    d: "30 jun",
+    h: "20:00",
+    v: "Azteca, CDMX"
+  },
+  M80: {
+    d: "1 jul",
+    h: "11:00",
+    v: "Merc-Benz, Atlanta"
+  },
+  M81: {
+    d: "1 jul",
+    h: "19:00",
+    v: "Levis Stadium, S.Clara"
+  },
+  M82: {
+    d: "1 jul",
+    h: "15:00",
+    v: "Lumen Field, Seattle"
+  },
+  M83: {
+    d: "2 jul",
+    h: "18:00",
+    v: "BMO Field, Toronto"
+  },
+  // Potencial 🇨🇴 si 2°K
+  M84: {
+    d: "2 jul",
+    h: "14:00",
+    v: "SoFi Stadium, LA"
+  },
+  M85: {
+    d: "2 jul",
+    h: "20:00",
+    v: "BC Place, Vancouver"
+  },
+  M86: {
+    d: "3 jul",
+    h: "17:00",
+    v: "Hard Rock, Miami"
+  },
+  M87: {
+    d: "3 jul",
+    h: "20:30",
+    v: "Arrowhead, KC"
+  },
+  // Potencial 🇨🇴 si 1°K
+  M88: {
+    d: "3 jul",
+    h: "13:00",
+    v: "AT&T Stadium, Dallas"
+  },
+  M89: {
+    d: "4 jul",
+    h: "16:00",
+    v: "Lincoln, Filadelfia"
+  },
+  M90: {
+    d: "4 jul",
+    h: "12:00",
+    v: "NRG Stadium, Houston"
+  },
+  M91: {
+    d: "5 jul",
+    h: "15:00",
+    v: "MetLife, N.Jersey"
+  },
+  M92: {
+    d: "5 jul",
+    h: "19:00",
+    v: "Azteca, CDMX"
+  },
+  M93: {
+    d: "6 jul",
+    h: "14:00",
+    v: "AT&T Stadium, Dallas"
+  },
+  M94: {
+    d: "6 jul",
+    h: "19:00",
+    v: "Lumen Field, Seattle"
+  },
+  M95: {
+    d: "7 jul",
+    h: "11:00",
+    v: "Merc-Benz, Atlanta"
+  },
+  M96: {
+    d: "7 jul",
+    h: "15:00",
+    v: "BC Place, Vancouver"
+  },
+  M97: {
+    d: "9 jul",
+    h: "15:00",
+    v: "Gillette, Boston"
+  },
+  M98: {
+    d: "10 jul",
+    h: "14:00",
+    v: "SoFi Stadium, LA"
+  },
+  M99: {
+    d: "11 jul",
+    h: "16:00",
+    v: "Hard Rock, Miami"
+  },
+  M100: {
+    d: "11 jul",
+    h: "20:00",
+    v: "Arrowhead, KC"
+  },
+  M101: {
+    d: "14 jul",
+    h: "14:00",
+    v: "AT&T Stadium, Dallas"
+  },
+  M102: {
+    d: "15 jul",
+    h: "14:00",
+    v: "Merc-Benz, Atlanta"
+  },
+  M103: {
+    d: "18 jul",
+    h: "16:00",
+    v: "Hard Rock, Miami"
+  },
+  M104: {
+    d: "19 jul",
+    h: "14:00",
+    v: "MetLife Stadium, N.Jersey"
+  }
+};
+
+// Colombia group matches keys
+const COL_GRP = ['K_1', 'K_5', 'K_2'];
+// Colombia match datetimes (COL time, for countdown & notifications)
+const COL_MATCHES = [{
+  key: 'K_1',
+  label: 'Uzbekistán vs Colombia',
+  dt: new Date('2026-06-17T21:00:00-05:00'),
+  venue: 'Azteca, CDMX'
+}, {
+  key: 'K_5',
+  label: 'Colombia vs RD Congo',
+  dt: new Date('2026-06-23T21:00:00-05:00'),
+  venue: 'Akron, Guadalajara'
+}, {
+  key: 'K_2',
+  label: 'Colombia vs Portugal',
+  dt: new Date('2026-06-27T18:30:00-05:00'),
+  venue: 'Hard Rock, Miami'
+}];
+
+// ── Persistencia automática en localStorage ────────────────────────────
+useEffect(() => {
+  if (Object.keys(groupActual).length > 0) {
+    LS.save('groupActual', groupActual);
+    const t = new Date().toLocaleTimeString('es-CO', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    setSavedAt(t);
+    LS.save('savedAt', t);
+  }
+}, [groupActual]);
+useEffect(() => {
+  if (Object.keys(koActual).length > 0) {
+    LS.save('koActual', koActual);
+    const t = new Date().toLocaleTimeString('es-CO', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    setSavedAt(t);
+    LS.save('savedAt', t);
+  }
+}, [koActual]);
+useEffect(() => {
+  if (simData) {
+    LS.save('simData', simData);
+    const t = new Date().toLocaleTimeString('es-CO', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    setSavedAt(t);
+    LS.save('savedAt', t);
+  }
+}, [simData]);
+
+// Run Monte Carlo
+const runSim = useCallback(() => {
+  setRunning(true);
+  setProgress(0);
+  setSimData(null);
+  const wins = {},
+    semis = {},
+    finals = {},
+    r8c = {},
+    groupPos = {};
+  const TOTAL = 5000;
+  const CHUNK = 200;
+  let done = 0;
+  function runChunk() {
+    const end = Math.min(done + CHUNK, TOTAL);
+    for (let i = done; i < end; i++) {
+      try {
+        const res = runOne(groupPos);
+        if (res.champ) wins[res.champ] = (wins[res.champ] || 0) + 1;
+        if (res.finalists) res.finalists.forEach(t => {
+          if (t) finals[t] = (finals[t] || 0) + 1;
+        });
+        if (res.semifinalists) res.semifinalists.forEach(t => {
+          if (t) semis[t] = (semis[t] || 0) + 1;
+        });
+        if (res.r8) res.r8.forEach(t => {
+          if (t) r8c[t] = (r8c[t] || 0) + 1;
+        });
+      } catch (e) {/* skip bad sim */}
+    }
+    done = end;
+    setProgress(Math.round(done / TOTAL * 100));
+    if (done < TOTAL) {
+      requestAnimationFrame(runChunk);
+    } else {
+      const table = Object.keys(ELO).filter((v, i, a) => a.indexOf(v) === i).map(t => ({
+        team: t,
+        elo: elo(t),
+        winPct: (wins[t] || 0) / TOTAL * 100,
+        finalPct: (finals[t] || 0) / TOTAL * 100,
+        semiPct: (semis[t] || 0) / TOTAL * 100,
+        r8Pct: (r8c[t] || 0) / TOTAL * 100,
+        opta: OPTA[t] || null
+      })).sort((a, b) => b.winPct - a.winPct);
+      setSimData({
+        table,
+        groupPos,
+        nSims: TOTAL
+      });
+      setRunning(false);
+    }
+  }
+  requestAnimationFrame(runChunk);
+}, []);
+
+// Derived predicted standings from sim
+const predStandings = useMemo(() => {
+  if (!simData?.groupPos) return {};
+  return buildPredStandings(simData.groupPos);
+}, [simData]);
+
+// Derived best3 and KO bracket from pred standings
+const {
+  predBracket,
+  best3assign
+} = useMemo(() => {
+  const ps = predStandings;
+  if (!Object.keys(ps).length) return {
+    predBracket: {},
+    best3assign: {}
+  };
+  const thirds = LETTERS.map(g => ({
+    g,
+    name: ps[g]?.[2] || "?",
+    pts: 0,
+    dg: 0,
+    gf: 0,
+    advProb: simData?.table?.find(t => t.team === ps[g]?.[2])?.r8Pct || 0
+  }));
+  thirds.sort((a, b) => b.advProb - a.advProb);
+  const b3 = assignB3(thirds.slice(0, 8));
+  const W = buildKOBracket(ps, b3);
+  return {
+    predBracket: W,
+    best3assign: b3
+  };
+}, [predStandings, simData]);
+
+// Actual standings (computed from user inputs)
+const actualStandings = useMemo(() => {
+  const out = {};
+  LETTERS.forEach(g => {
+    out[g] = computeStandings(g, groupActual);
+  });
+  return out;
+}, [groupActual]);
+
+// Actual best3rds
+const actualBest3 = useMemo(() => {
+  const thirds = LETTERS.map(g => ({
+    g,
+    ...(actualStandings[g]?.[2] || {
+      name: "?",
+      pts: 0,
+      dg: 0,
+      gf: 0
+    })
+  })).sort((a, b) => b.pts - a.pts || b.dg - a.dg || b.gf - a.gf).slice(0, 8);
+  return thirds;
+}, [actualStandings]);
+
+// Resolve KO team (uses actual if available, else sim pred)
+const koWinners = useMemo(() => {
+  const W = {};
+  function resSlot(slot, id) {
+    if (slot.t === "g") {
+      const st = actualStandings[slot.g];
+      const t = st?.[slot.p - 1]?.name;
+      return t && t !== "?" ? t : predStandings[slot.g]?.[slot.p - 1] || "?";
+    }
+    if (slot.t === "b3") {
+      const pool = (B3_POOLS[id] || "").split("");
+      const found = actualBest3.find(t => pool.includes(t.g) && t.name !== "?");
+      return found?.name || best3assign[id] || "?";
+    }
+    return W[slot] || "?";
+  }
+  R32.forEach(m => {
+    const a = resSlot(m.a, m.id),
+      b = resSlot(m.b, m.id);
+    W[m.id + "_a"] = a;
+    W[m.id + "_b"] = b;
+    const sc = koActual[m.id];
+    if (sc?.s1 !== null && sc?.s2 !== null && sc?.s1 !== undefined) {
+      const note = sc.note || "";
+      if (note.toLowerCase().includes("pen")) {
+        const mm = note.match(/(\d+)[–-](\d+)/);
+        if (mm) W[m.id] = parseInt(mm[1]) > parseInt(mm[2]) ? a : b;
+      } else W[m.id] = sc.s1 > sc.s2 ? a : sc.s2 > sc.s1 ? b : null;
+    } else W[m.id] = elo(a) >= elo(b) ? a : b; // sim prediction
+  });
+  [...R16, ...QF, ...SF].forEach(m => {
+    const a = W[m.a] || predBracket[m.a] || "?";
+    const b = W[m.b] || predBracket[m.b] || "?";
+    W[m.id + "_a"] = a;
+    W[m.id + "_b"] = b;
+    const sc = koActual[m.id];
+    if (sc?.s1 !== null && sc?.s1 !== undefined) {
+      const note = sc.note || "";
+      if (note.toLowerCase().includes("pen")) {
+        const mm = note.match(/(\d+)[–-](\d+)/);
+        if (mm) W[m.id] = parseInt(mm[1]) > parseInt(mm[2]) ? a : b;
+      } else W[m.id] = sc.s1 > sc.s2 ? a : sc.s2 > sc.s1 ? b : null;
+    } else W[m.id] = elo(a) >= elo(b) ? a : b;
+  });
+  // Final & 3rd
+  [FINAL, THIRD].forEach(m => {
+    const a = m.isLoser ? (W.M101 === W[m.a] ? W.M102 : W.M101) || predBracket.M103a || "?" : W[m.a] || predBracket[m.a] || "?";
+    const b = m.isLoser ? (W.M102 === W[m.b] ? W.M101 : W.M102) || predBracket.M103b || "?" : W[m.b] || predBracket[m.b] || "?";
+    W[m.id + "_a"] = a;
+    W[m.id + "_b"] = b;
+    const sc = koActual[m.id];
+    if (sc?.s1 !== null && sc?.s1 !== undefined) {
+      W[m.id] = sc.s1 > sc.s2 ? a : sc.s2 > sc.s1 ? b : null;
+    } else W[m.id] = elo(a) >= elo(b) ? a : b;
+  });
+  return W;
+}, [actualStandings, actualBest3, predStandings, best3assign, predBracket, koActual]);
+const getPredForKO = m => {
+  const tA = koWinners[m.id + "_a"] || "?",
+    tB = koWinners[m.id + "_b"] || "?";
+  const [s1, s2] = predScore(tA, tB);
+  const wp = winProb(tA, tB);
+  const simRow = id => simData?.table?.find(t => t.team === id);
+  return {
+    teams: [tA, tB],
+    scores: [s1, s2],
+    winPcts: [simRow(tA)?.winPct?.toFixed(1) || wp.win, simRow(tB)?.winPct?.toFixed(1) || wp.lose]
+  };
+};
+
+// Accuracy stats
+const accStats = useMemo(() => {
+  let exact = 0,
+    correct = 0,
+    wrong = 0,
+    pending = 0;
+  LETTERS.forEach(g => PAIRS.forEach(([i, j], mi) => {
+    const key = `${g}_${mi}`;
+    const act = groupActual[key] || [null, null];
+    const [ps1, ps2] = predScore(GRUPOS[g][i], GRUPOS[g][j]);
+    const s = matchAcc(ps1, ps2, act[0], act[1]);
+    if (s === "exact") exact++;else if (s === "correct") correct++;else if (s === "wrong") wrong++;else pending++;
+  }));
+  ALL_KO.forEach(m => {
+    const [pS1, pS2] = predScore(koWinners[m.id + "_a"] || "?", koWinners[m.id + "_b"] || "?");
+    const act = koActual[m.id] || {};
+    const s = matchAcc(pS1, pS2, act.s1, act.s2, "", act.note || "");
+    if (s === "exact") exact++;else if (s === "correct") correct++;else if (s === "wrong") wrong++;else pending++;
+  });
+  const tot = exact + correct + wrong;
+  return {
+    exact,
+    correct,
+    wrong,
+    pending,
+    total: tot,
+    pct: tot > 0 ? Math.round((exact + correct) / tot * 100) : null
+  };
+}, [groupActual, koActual, koWinners]);
+const handleGrpScore = useCallback((g, mi, val) => {
+  setGroupActual(p => ({
+    ...p,
+    [`${g}_${mi}`]: val
+  }));
+}, []);
+const handleKOScore = useCallback((id, field, val) => {
+  setKoActual(p => ({
+    ...p,
+    [id]: {
+      ...(p[id] || {}),
+      s1: null,
+      s2: null,
+      [field]: val
+    }
+  }));
+}, []);
+const handleKONote = useCallback((id, note) => {
+  setKoActual(p => ({
+    ...p,
+    [id]: {
+      ...(p[id] || {}),
+      note
+    }
+  }));
+}, []);
+
+// ── Colombia: countdown & notifications ───────────────────────────────
+const [notifPerm, setNotifPerm] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'default');
+const [notifScheduled, setNotifScheduled] = useState(false);
+function msToCountdown(ms) {
+  if (ms <= 0) return null;
+  const d = Math.floor(ms / 86400000);
+  const h = Math.floor(ms % 86400000 / 3600000);
+  const m = Math.floor(ms % 3600000 / 60000);
+  const s = Math.floor(ms % 60000 / 1000);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  return `${m}m ${s}s`;
+}
+const [now, setNow] = useState(Date.now());
+useEffect(() => {
+  const t = setInterval(() => setNow(Date.now()), 1000);
+  return () => clearInterval(t);
+}, []);
+const nextColMatch = COL_MATCHES.find(m => m.dt.getTime() > now);
+const msToNext = nextColMatch ? nextColMatch.dt.getTime() - now : null;
+function scheduleNotifications() {
+  if (typeof Notification === 'undefined') {
+    alert('Tu navegador no soporta notificaciones. Usa Chrome en Android o Safari en iOS.');
+    return;
+  }
+  Notification.requestPermission().then(perm => {
+    setNotifPerm(perm);
+    if (perm === 'granted') {
+      let scheduled = 0;
+      COL_MATCHES.forEach(m => {
+        const alert30 = m.dt.getTime() - 30 * 60 * 1000;
+        const alertNow = m.dt.getTime();
+        const delay30 = alert30 - Date.now();
+        const delay0 = alertNow - Date.now();
+        if (delay30 > 0) {
+          setTimeout(() => {
+            new Notification('⚽ ¡Colombia juega en 30 minutos!', {
+              body: m.label + ' · ' + m.venue,
+              icon: './icon-192.png',
+              tag: 'col30-' + m.dt.getTime(),
+              requireInteraction: true
+            });
+          }, delay30);
+          scheduled++;
+        }
+        if (delay0 > 0) {
+          setTimeout(() => {
+            new Notification('🔴 ¡Comienza Colombia!', {
+              body: m.label + ' · ' + m.venue,
+              icon: './icon-192.png',
+              tag: 'col0-' + m.dt.getTime(),
+              requireInteraction: true
+            });
+          }, delay0);
+        }
+      });
+      setNotifScheduled(scheduled > 0);
+      if (scheduled === 0) alert('No hay partidos de Colombia próximos para alertar.');
+    }
+  });
+}
+function calUrl(m) {
+  const s = m.dt.toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  const e = new Date(m.dt.getTime() + 7200000).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  const base = 'https://calendar.google.com/calendar/render?action=TEMPLATE';
+  return base + '&text=' + encodeURIComponent('Futbol: ' + m.label) + '&dates=' + s + '/' + e + '&location=' + encodeURIComponent(m.venue) + '&details=' + encodeURIComponent('FIFA World Cup 2026 - Grupo K');
+}
 function App() {
   const [tab, setTab] = useState("sim");
 
@@ -1392,976 +2361,6 @@ function App() {
   const [koActual, setKoActual] = useState(() => LS.load('koActual', {}));
   const [savedAt, setSavedAt] = useState(() => LS.load('savedAt', null));
   const N = 10000;
-
-  /* ── Calendario oficial FIFA (horario Colombia COT = ET-1h) ─────────── */
-  const SCH = {
-    // GRUPO A  (México=0, Corea Sur=1, Chequia=2, Sudáfrica=3)
-    A_0: {
-      d: "11 jun",
-      h: "14:00",
-      v: "Azteca, CDMX"
-    },
-    A_1: {
-      d: "11 jun",
-      h: "21:00",
-      v: "Akron, Guadalajara"
-    },
-    A_2: {
-      d: "18 jun",
-      h: "20:00",
-      v: "Akron, Guadalajara"
-    },
-    // México vs Corea Sur
-    A_3: {
-      d: "18 jun",
-      h: "11:00",
-      v: "Merc-Benz, Atlanta"
-    },
-    // Chequia vs Sudáfrica
-    A_4: {
-      d: "24 jun",
-      h: "20:00",
-      v: "Azteca, CDMX"
-    },
-    A_5: {
-      d: "24 jun",
-      h: "20:00",
-      v: "BBVA, Monterrey"
-    },
-    // GRUPO B  (Suiza=0, Canadá=1, Bosnia=2, Qatar=3)
-    B_0: {
-      d: "13 jun",
-      h: "14:00",
-      v: "Levis Stadium, S.Clara"
-    },
-    // Qatar vs Suiza
-    B_1: {
-      d: "12 jun",
-      h: "14:00",
-      v: "BMO Field, Toronto"
-    },
-    // Canadá vs Bosnia
-    B_2: {
-      d: "24 jun",
-      h: "14:00",
-      v: "BC Place, Vancouver"
-    },
-    // Suiza vs Canadá
-    B_3: {
-      d: "24 jun",
-      h: "14:00",
-      v: "Lumen Field, Seattle"
-    },
-    // Bosnia vs Qatar
-    B_4: {
-      d: "18 jun",
-      h: "14:00",
-      v: "SoFi Stadium, LA"
-    },
-    // Suiza vs Bosnia
-    B_5: {
-      d: "18 jun",
-      h: "17:00",
-      v: "BC Place, Vancouver"
-    },
-    // Canadá vs Qatar
-    // GRUPO C  (Brasil=0, Marruecos=1, Escocia=2, Haití=3)
-    C_0: {
-      d: "19 jun",
-      h: "20:00",
-      v: "Lincoln, Filadelfia"
-    },
-    // Brasil vs Haití
-    C_1: {
-      d: "19 jun",
-      h: "17:00",
-      v: "Gillette, Boston"
-    },
-    // Escocia vs Marruecos
-    C_2: {
-      d: "13 jun",
-      h: "17:00",
-      v: "MetLife, N.Jersey"
-    },
-    // Brasil vs Marruecos
-    C_3: {
-      d: "13 jun",
-      h: "20:00",
-      v: "Gillette, Boston"
-    },
-    // Haití vs Escocia
-    C_4: {
-      d: "24 jun",
-      h: "17:00",
-      v: "Hard Rock, Miami"
-    },
-    // Escocia vs Brasil
-    C_5: {
-      d: "24 jun",
-      h: "17:00",
-      v: "Merc-Benz, Atlanta"
-    },
-    // Marruecos vs Haití
-    // GRUPO D  (Estados Unidos=0, Turquía=1, Paraguay=2, Australia=3)
-    D_0: {
-      d: "19 jun",
-      h: "14:00",
-      v: "Lumen Field, Seattle"
-    },
-    // EEUU vs Australia
-    D_1: {
-      d: "20 jun",
-      h: "23:00",
-      v: "Levis Stadium, S.Clara"
-    },
-    // Turquía vs Paraguay
-    D_2: {
-      d: "25 jun",
-      h: "21:00",
-      v: "SoFi Stadium, LA"
-    },
-    // Turquía vs EEUU
-    D_3: {
-      d: "25 jun",
-      h: "21:00",
-      v: "Levis Stadium, S.Clara"
-    },
-    // Paraguay vs Australia
-    D_4: {
-      d: "12 jun",
-      h: "20:00",
-      v: "SoFi Stadium, LA"
-    },
-    // EEUU vs Paraguay
-    D_5: {
-      d: "14 jun",
-      h: "23:00",
-      v: "BC Place, Vancouver"
-    },
-    // Australia vs Turquía
-    // GRUPO E  (Alemania=0, Ecuador=1, Costa de Marfil=2, Curazao=3)
-    E_0: {
-      d: "14 jun",
-      h: "12:00",
-      v: "NRG Stadium, Houston"
-    },
-    // Alemania vs Curazao
-    E_1: {
-      d: "14 jun",
-      h: "18:00",
-      v: "Lincoln, Filadelfia"
-    },
-    // Costa de Marfil vs Ecuador
-    E_2: {
-      d: "20 jun",
-      h: "15:00",
-      v: "BMO Field, Toronto"
-    },
-    // Alemania vs Costa de Marfil
-    E_3: {
-      d: "20 jun",
-      h: "19:00",
-      v: "Arrowhead, KC"
-    },
-    // Ecuador vs Curazao
-    E_4: {
-      d: "25 jun",
-      h: "15:00",
-      v: "MetLife, N.Jersey"
-    },
-    // Ecuador vs Alemania
-    E_5: {
-      d: "25 jun",
-      h: "15:00",
-      v: "Lincoln, Filadelfia"
-    },
-    // Curazao vs Costa de Marfil
-    // GRUPO F  (Países Bajos=0, Japón=1, Suecia=2, Túnez=3)
-    F_0: {
-      d: "20 jun",
-      h: "12:00",
-      v: "NRG Stadium, Houston"
-    },
-    // PB vs Suecia
-    F_1: {
-      d: "21 jun",
-      h: "23:00",
-      v: "BBVA, Monterrey"
-    },
-    // Túnez vs Japón
-    F_2: {
-      d: "14 jun",
-      h: "15:00",
-      v: "AT&T Stadium, Dallas"
-    },
-    // PB vs Japón
-    F_3: {
-      d: "14 jun",
-      h: "21:00",
-      v: "BBVA, Monterrey"
-    },
-    // Suecia vs Túnez
-    F_4: {
-      d: "25 jun",
-      h: "18:00",
-      v: "AT&T Stadium, Dallas"
-    },
-    // Japón vs Suecia
-    F_5: {
-      d: "25 jun",
-      h: "18:00",
-      v: "Arrowhead, KC"
-    },
-    // Túnez vs PB
-    // GRUPO G  (Bélgica=0, Irán=1, Egipto=2, Nueva Zelanda=3)
-    G_0: {
-      d: "21 jun",
-      h: "14:00",
-      v: "SoFi Stadium, LA"
-    },
-    // Bélgica vs Irán
-    G_1: {
-      d: "21 jun",
-      h: "20:00",
-      v: "BC Place, Vancouver"
-    },
-    // Nueva Zelanda vs Egipto
-    G_2: {
-      d: "27 jun",
-      h: "22:00",
-      v: "Lumen Field, Seattle"
-    },
-    // Egipto vs Irán
-    G_3: {
-      d: "27 jun",
-      h: "22:00",
-      v: "BC Place, Vancouver"
-    },
-    // Nueva Zelanda vs Bélgica
-    G_4: {
-      d: "15 jun",
-      h: "14:00",
-      v: "Lumen Field, Seattle"
-    },
-    // Bélgica vs Egipto
-    G_5: {
-      d: "15 jun",
-      h: "20:00",
-      v: "SoFi Stadium, LA"
-    },
-    // Irán vs Nueva Zelanda
-    // GRUPO H  (España=0, Uruguay=1, Arabia Saudí=2, Cabo Verde=3)
-    H_0: {
-      d: "15 jun",
-      h: "11:00",
-      v: "Merc-Benz, Atlanta"
-    },
-    // España vs Cabo Verde
-    H_1: {
-      d: "15 jun",
-      h: "17:00",
-      v: "Hard Rock, Miami"
-    },
-    // Arabia Saudí vs Uruguay
-    H_2: {
-      d: "26 jun",
-      h: "19:00",
-      v: "Akron, Guadalajara"
-    },
-    // Uruguay vs España
-    H_3: {
-      d: "26 jun",
-      h: "19:00",
-      v: "NRG Stadium, Houston"
-    },
-    // Cabo Verde vs Arabia Saudí
-    H_4: {
-      d: "21 jun",
-      h: "11:00",
-      v: "Merc-Benz, Atlanta"
-    },
-    // España vs Arabia Saudí
-    H_5: {
-      d: "21 jun",
-      h: "17:00",
-      v: "Hard Rock, Miami"
-    },
-    // Uruguay vs Cabo Verde
-    // GRUPO I  (Francia=0, Senegal=1, Noruega=2, Iraq=3)
-    I_0: {
-      d: "22 jun",
-      h: "16:00",
-      v: "Lincoln, Filadelfia"
-    },
-    // Francia vs Iraq
-    I_1: {
-      d: "22 jun",
-      h: "19:00",
-      v: "MetLife, N.Jersey"
-    },
-    // Noruega vs Senegal
-    I_2: {
-      d: "16 jun",
-      h: "14:00",
-      v: "MetLife, N.Jersey"
-    },
-    // Francia vs Senegal
-    I_3: {
-      d: "16 jun",
-      h: "17:00",
-      v: "Gillette, Boston"
-    },
-    // Iraq vs Noruega
-    I_4: {
-      d: "26 jun",
-      h: "14:00",
-      v: "Gillette, Boston"
-    },
-    // Noruega vs Francia
-    I_5: {
-      d: "26 jun",
-      h: "14:00",
-      v: "BMO Field, Toronto"
-    },
-    // Senegal vs Iraq
-    // GRUPO J  (Argentina=0, Austria=1, Argelia=2, Jordania=3)
-    J_0: {
-      d: "27 jun",
-      h: "21:00",
-      v: "AT&T Stadium, Dallas"
-    },
-    // Jordania vs Argentina
-    J_1: {
-      d: "27 jun",
-      h: "21:00",
-      v: "Arrowhead, KC"
-    },
-    // Argelia vs Austria
-    J_2: {
-      d: "22 jun",
-      h: "12:00",
-      v: "AT&T Stadium, Dallas"
-    },
-    // Argentina vs Austria
-    J_3: {
-      d: "22 jun",
-      h: "22:00",
-      v: "Levis Stadium, S.Clara"
-    },
-    // Jordania vs Argelia
-    J_4: {
-      d: "16 jun",
-      h: "20:00",
-      v: "Arrowhead, KC"
-    },
-    // Argentina vs Argelia
-    J_5: {
-      d: "17 jun",
-      h: "23:00",
-      v: "Levis Stadium, S.Clara"
-    },
-    // Austria vs Jordania
-    // GRUPO K  (Portugal=0, Colombia=1, Uzbekistán=2, RD Congo=3) 🇨🇴
-    K_0: {
-      d: "17 jun",
-      h: "12:00",
-      v: "NRG Stadium, Houston"
-    },
-    // Portugal vs RD Congo
-    K_1: {
-      d: "17 jun",
-      h: "21:00",
-      v: "Azteca, CDMX",
-      col: true
-    },
-    // 🇨🇴 Colombia vs Uzbekistán
-    K_2: {
-      d: "27 jun",
-      h: "18:30",
-      v: "Hard Rock, Miami",
-      col: true
-    },
-    // 🇨🇴 Colombia vs Portugal
-    K_3: {
-      d: "27 jun",
-      h: "18:30",
-      v: "Merc-Benz, Atlanta"
-    },
-    // RD Congo vs Uzbekistán
-    K_4: {
-      d: "23 jun",
-      h: "12:00",
-      v: "NRG Stadium, Houston"
-    },
-    // Portugal vs Uzbekistán
-    K_5: {
-      d: "23 jun",
-      h: "21:00",
-      v: "Akron, Guadalajara",
-      col: true
-    },
-    // 🇨🇴 Colombia vs RD Congo
-    // GRUPO L  (Inglaterra=0, Croacia=1, Ghana=2, Panamá=3)
-    L_0: {
-      d: "27 jun",
-      h: "16:00",
-      v: "MetLife, N.Jersey"
-    },
-    // Panamá vs Inglaterra
-    L_1: {
-      d: "27 jun",
-      h: "16:00",
-      v: "Lincoln, Filadelfia"
-    },
-    // Croacia vs Ghana
-    L_2: {
-      d: "17 jun",
-      h: "15:00",
-      v: "AT&T Stadium, Dallas"
-    },
-    // Inglaterra vs Croacia
-    L_3: {
-      d: "17 jun",
-      h: "18:00",
-      v: "BMO Field, Toronto"
-    },
-    // Ghana vs Panamá
-    L_4: {
-      d: "23 jun",
-      h: "15:00",
-      v: "Gillette, Boston"
-    },
-    // Inglaterra vs Ghana
-    L_5: {
-      d: "23 jun",
-      h: "18:00",
-      v: "BMO Field, Toronto"
-    },
-    // Panamá vs Croacia
-    // FASE ELIMINATORIA (horario Colombia)
-    M73: {
-      d: "28 jun",
-      h: "14:00",
-      v: "SoFi Stadium, LA"
-    },
-    M74: {
-      d: "29 jun",
-      h: "15:30",
-      v: "Gillette, Boston"
-    },
-    M75: {
-      d: "29 jun",
-      h: "20:00",
-      v: "BBVA, Monterrey"
-    },
-    M76: {
-      d: "29 jun",
-      h: "12:00",
-      v: "NRG Stadium, Houston"
-    },
-    M77: {
-      d: "30 jun",
-      h: "16:00",
-      v: "MetLife, N.Jersey"
-    },
-    M78: {
-      d: "30 jun",
-      h: "12:00",
-      v: "AT&T Stadium, Dallas"
-    },
-    M79: {
-      d: "30 jun",
-      h: "20:00",
-      v: "Azteca, CDMX"
-    },
-    M80: {
-      d: "1 jul",
-      h: "11:00",
-      v: "Merc-Benz, Atlanta"
-    },
-    M81: {
-      d: "1 jul",
-      h: "19:00",
-      v: "Levis Stadium, S.Clara"
-    },
-    M82: {
-      d: "1 jul",
-      h: "15:00",
-      v: "Lumen Field, Seattle"
-    },
-    M83: {
-      d: "2 jul",
-      h: "18:00",
-      v: "BMO Field, Toronto"
-    },
-    // Potencial 🇨🇴 si 2°K
-    M84: {
-      d: "2 jul",
-      h: "14:00",
-      v: "SoFi Stadium, LA"
-    },
-    M85: {
-      d: "2 jul",
-      h: "20:00",
-      v: "BC Place, Vancouver"
-    },
-    M86: {
-      d: "3 jul",
-      h: "17:00",
-      v: "Hard Rock, Miami"
-    },
-    M87: {
-      d: "3 jul",
-      h: "20:30",
-      v: "Arrowhead, KC"
-    },
-    // Potencial 🇨🇴 si 1°K
-    M88: {
-      d: "3 jul",
-      h: "13:00",
-      v: "AT&T Stadium, Dallas"
-    },
-    M89: {
-      d: "4 jul",
-      h: "16:00",
-      v: "Lincoln, Filadelfia"
-    },
-    M90: {
-      d: "4 jul",
-      h: "12:00",
-      v: "NRG Stadium, Houston"
-    },
-    M91: {
-      d: "5 jul",
-      h: "15:00",
-      v: "MetLife, N.Jersey"
-    },
-    M92: {
-      d: "5 jul",
-      h: "19:00",
-      v: "Azteca, CDMX"
-    },
-    M93: {
-      d: "6 jul",
-      h: "14:00",
-      v: "AT&T Stadium, Dallas"
-    },
-    M94: {
-      d: "6 jul",
-      h: "19:00",
-      v: "Lumen Field, Seattle"
-    },
-    M95: {
-      d: "7 jul",
-      h: "11:00",
-      v: "Merc-Benz, Atlanta"
-    },
-    M96: {
-      d: "7 jul",
-      h: "15:00",
-      v: "BC Place, Vancouver"
-    },
-    M97: {
-      d: "9 jul",
-      h: "15:00",
-      v: "Gillette, Boston"
-    },
-    M98: {
-      d: "10 jul",
-      h: "14:00",
-      v: "SoFi Stadium, LA"
-    },
-    M99: {
-      d: "11 jul",
-      h: "16:00",
-      v: "Hard Rock, Miami"
-    },
-    M100: {
-      d: "11 jul",
-      h: "20:00",
-      v: "Arrowhead, KC"
-    },
-    M101: {
-      d: "14 jul",
-      h: "14:00",
-      v: "AT&T Stadium, Dallas"
-    },
-    M102: {
-      d: "15 jul",
-      h: "14:00",
-      v: "Merc-Benz, Atlanta"
-    },
-    M103: {
-      d: "18 jul",
-      h: "16:00",
-      v: "Hard Rock, Miami"
-    },
-    M104: {
-      d: "19 jul",
-      h: "14:00",
-      v: "MetLife Stadium, N.Jersey"
-    }
-  };
-
-  // Colombia group matches keys
-  const COL_GRP = ['K_1', 'K_5', 'K_2'];
-  // Colombia match datetimes (COL time, for countdown & notifications)
-  const COL_MATCHES = [{
-    key: 'K_1',
-    label: 'Uzbekistán vs Colombia',
-    dt: new Date('2026-06-17T21:00:00-05:00'),
-    venue: 'Azteca, CDMX'
-  }, {
-    key: 'K_5',
-    label: 'Colombia vs RD Congo',
-    dt: new Date('2026-06-23T21:00:00-05:00'),
-    venue: 'Akron, Guadalajara'
-  }, {
-    key: 'K_2',
-    label: 'Colombia vs Portugal',
-    dt: new Date('2026-06-27T18:30:00-05:00'),
-    venue: 'Hard Rock, Miami'
-  }];
-
-  // ── Persistencia automática en localStorage ────────────────────────────
-  useEffect(() => {
-    if (Object.keys(groupActual).length > 0) {
-      LS.save('groupActual', groupActual);
-      const t = new Date().toLocaleTimeString('es-CO', {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-      setSavedAt(t);
-      LS.save('savedAt', t);
-    }
-  }, [groupActual]);
-  useEffect(() => {
-    if (Object.keys(koActual).length > 0) {
-      LS.save('koActual', koActual);
-      const t = new Date().toLocaleTimeString('es-CO', {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-      setSavedAt(t);
-      LS.save('savedAt', t);
-    }
-  }, [koActual]);
-  useEffect(() => {
-    if (simData) {
-      LS.save('simData', simData);
-      const t = new Date().toLocaleTimeString('es-CO', {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-      setSavedAt(t);
-      LS.save('savedAt', t);
-    }
-  }, [simData]);
-
-  // Run Monte Carlo
-  const runSim = useCallback(() => {
-    setRunning(true);
-    setProgress(0);
-    setSimData(null);
-    const wins = {},
-      semis = {},
-      finals = {},
-      r8c = {},
-      groupPos = {};
-    const TOTAL = 5000;
-    const CHUNK = 200;
-    let done = 0;
-    function runChunk() {
-      const end = Math.min(done + CHUNK, TOTAL);
-      for (let i = done; i < end; i++) {
-        try {
-          const res = runOne(groupPos);
-          if (res.champ) wins[res.champ] = (wins[res.champ] || 0) + 1;
-          if (res.finalists) res.finalists.forEach(t => {
-            if (t) finals[t] = (finals[t] || 0) + 1;
-          });
-          if (res.semifinalists) res.semifinalists.forEach(t => {
-            if (t) semis[t] = (semis[t] || 0) + 1;
-          });
-          if (res.r8) res.r8.forEach(t => {
-            if (t) r8c[t] = (r8c[t] || 0) + 1;
-          });
-        } catch (e) {/* skip bad sim */}
-      }
-      done = end;
-      setProgress(Math.round(done / TOTAL * 100));
-      if (done < TOTAL) {
-        requestAnimationFrame(runChunk);
-      } else {
-        const table = Object.keys(ELO).filter((v, i, a) => a.indexOf(v) === i).map(t => ({
-          team: t,
-          elo: elo(t),
-          winPct: (wins[t] || 0) / TOTAL * 100,
-          finalPct: (finals[t] || 0) / TOTAL * 100,
-          semiPct: (semis[t] || 0) / TOTAL * 100,
-          r8Pct: (r8c[t] || 0) / TOTAL * 100,
-          opta: OPTA[t] || null
-        })).sort((a, b) => b.winPct - a.winPct);
-        setSimData({
-          table,
-          groupPos,
-          nSims: TOTAL
-        });
-        setRunning(false);
-      }
-    }
-    requestAnimationFrame(runChunk);
-  }, []);
-
-  // Derived predicted standings from sim
-  const predStandings = useMemo(() => {
-    if (!simData?.groupPos) return {};
-    return buildPredStandings(simData.groupPos);
-  }, [simData]);
-
-  // Derived best3 and KO bracket from pred standings
-  const {
-    predBracket,
-    best3assign
-  } = useMemo(() => {
-    const ps = predStandings;
-    if (!Object.keys(ps).length) return {
-      predBracket: {},
-      best3assign: {}
-    };
-    const thirds = LETTERS.map(g => ({
-      g,
-      name: ps[g]?.[2] || "?",
-      pts: 0,
-      dg: 0,
-      gf: 0,
-      advProb: simData?.table?.find(t => t.team === ps[g]?.[2])?.r8Pct || 0
-    }));
-    thirds.sort((a, b) => b.advProb - a.advProb);
-    const b3 = assignB3(thirds.slice(0, 8));
-    const W = buildKOBracket(ps, b3);
-    return {
-      predBracket: W,
-      best3assign: b3
-    };
-  }, [predStandings, simData]);
-
-  // Actual standings (computed from user inputs)
-  const actualStandings = useMemo(() => {
-    const out = {};
-    LETTERS.forEach(g => {
-      out[g] = computeStandings(g, groupActual);
-    });
-    return out;
-  }, [groupActual]);
-
-  // Actual best3rds
-  const actualBest3 = useMemo(() => {
-    const thirds = LETTERS.map(g => ({
-      g,
-      ...(actualStandings[g]?.[2] || {
-        name: "?",
-        pts: 0,
-        dg: 0,
-        gf: 0
-      })
-    })).sort((a, b) => b.pts - a.pts || b.dg - a.dg || b.gf - a.gf).slice(0, 8);
-    return thirds;
-  }, [actualStandings]);
-
-  // Resolve KO team (uses actual if available, else sim pred)
-  const koWinners = useMemo(() => {
-    const W = {};
-    function resSlot(slot, id) {
-      if (slot.t === "g") {
-        const st = actualStandings[slot.g];
-        const t = st?.[slot.p - 1]?.name;
-        return t && t !== "?" ? t : predStandings[slot.g]?.[slot.p - 1] || "?";
-      }
-      if (slot.t === "b3") {
-        const pool = (B3_POOLS[id] || "").split("");
-        const found = actualBest3.find(t => pool.includes(t.g) && t.name !== "?");
-        return found?.name || best3assign[id] || "?";
-      }
-      return W[slot] || "?";
-    }
-    R32.forEach(m => {
-      const a = resSlot(m.a, m.id),
-        b = resSlot(m.b, m.id);
-      W[m.id + "_a"] = a;
-      W[m.id + "_b"] = b;
-      const sc = koActual[m.id];
-      if (sc?.s1 !== null && sc?.s2 !== null && sc?.s1 !== undefined) {
-        const note = sc.note || "";
-        if (note.toLowerCase().includes("pen")) {
-          const mm = note.match(/(\d+)[–-](\d+)/);
-          if (mm) W[m.id] = parseInt(mm[1]) > parseInt(mm[2]) ? a : b;
-        } else W[m.id] = sc.s1 > sc.s2 ? a : sc.s2 > sc.s1 ? b : null;
-      } else W[m.id] = elo(a) >= elo(b) ? a : b; // sim prediction
-    });
-    [...R16, ...QF, ...SF].forEach(m => {
-      const a = W[m.a] || predBracket[m.a] || "?";
-      const b = W[m.b] || predBracket[m.b] || "?";
-      W[m.id + "_a"] = a;
-      W[m.id + "_b"] = b;
-      const sc = koActual[m.id];
-      if (sc?.s1 !== null && sc?.s1 !== undefined) {
-        const note = sc.note || "";
-        if (note.toLowerCase().includes("pen")) {
-          const mm = note.match(/(\d+)[–-](\d+)/);
-          if (mm) W[m.id] = parseInt(mm[1]) > parseInt(mm[2]) ? a : b;
-        } else W[m.id] = sc.s1 > sc.s2 ? a : sc.s2 > sc.s1 ? b : null;
-      } else W[m.id] = elo(a) >= elo(b) ? a : b;
-    });
-    // Final & 3rd
-    [FINAL, THIRD].forEach(m => {
-      const a = m.isLoser ? (W.M101 === W[m.a] ? W.M102 : W.M101) || predBracket.M103a || "?" : W[m.a] || predBracket[m.a] || "?";
-      const b = m.isLoser ? (W.M102 === W[m.b] ? W.M101 : W.M102) || predBracket.M103b || "?" : W[m.b] || predBracket[m.b] || "?";
-      W[m.id + "_a"] = a;
-      W[m.id + "_b"] = b;
-      const sc = koActual[m.id];
-      if (sc?.s1 !== null && sc?.s1 !== undefined) {
-        W[m.id] = sc.s1 > sc.s2 ? a : sc.s2 > sc.s1 ? b : null;
-      } else W[m.id] = elo(a) >= elo(b) ? a : b;
-    });
-    return W;
-  }, [actualStandings, actualBest3, predStandings, best3assign, predBracket, koActual]);
-  const getPredForKO = m => {
-    const tA = koWinners[m.id + "_a"] || "?",
-      tB = koWinners[m.id + "_b"] || "?";
-    const [s1, s2] = predScore(tA, tB);
-    const wp = winProb(tA, tB);
-    const simRow = id => simData?.table?.find(t => t.team === id);
-    return {
-      teams: [tA, tB],
-      scores: [s1, s2],
-      winPcts: [simRow(tA)?.winPct?.toFixed(1) || wp.win, simRow(tB)?.winPct?.toFixed(1) || wp.lose]
-    };
-  };
-
-  // Accuracy stats
-  const accStats = useMemo(() => {
-    let exact = 0,
-      correct = 0,
-      wrong = 0,
-      pending = 0;
-    LETTERS.forEach(g => PAIRS.forEach(([i, j], mi) => {
-      const key = `${g}_${mi}`;
-      const act = groupActual[key] || [null, null];
-      const [ps1, ps2] = predScore(GRUPOS[g][i], GRUPOS[g][j]);
-      const s = matchAcc(ps1, ps2, act[0], act[1]);
-      if (s === "exact") exact++;else if (s === "correct") correct++;else if (s === "wrong") wrong++;else pending++;
-    }));
-    ALL_KO.forEach(m => {
-      const [pS1, pS2] = predScore(koWinners[m.id + "_a"] || "?", koWinners[m.id + "_b"] || "?");
-      const act = koActual[m.id] || {};
-      const s = matchAcc(pS1, pS2, act.s1, act.s2, "", act.note || "");
-      if (s === "exact") exact++;else if (s === "correct") correct++;else if (s === "wrong") wrong++;else pending++;
-    });
-    const tot = exact + correct + wrong;
-    return {
-      exact,
-      correct,
-      wrong,
-      pending,
-      total: tot,
-      pct: tot > 0 ? Math.round((exact + correct) / tot * 100) : null
-    };
-  }, [groupActual, koActual, koWinners]);
-  const handleGrpScore = useCallback((g, mi, val) => {
-    setGroupActual(p => ({
-      ...p,
-      [`${g}_${mi}`]: val
-    }));
-  }, []);
-  const handleKOScore = useCallback((id, field, val) => {
-    setKoActual(p => ({
-      ...p,
-      [id]: {
-        ...(p[id] || {}),
-        s1: null,
-        s2: null,
-        [field]: val
-      }
-    }));
-  }, []);
-  const handleKONote = useCallback((id, note) => {
-    setKoActual(p => ({
-      ...p,
-      [id]: {
-        ...(p[id] || {}),
-        note
-      }
-    }));
-  }, []);
-
-  // ── Colombia: countdown & notifications ───────────────────────────────
-  const [notifPerm, setNotifPerm] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'default');
-  const [notifScheduled, setNotifScheduled] = useState(false);
-  function msToCountdown(ms) {
-    if (ms <= 0) return null;
-    const d = Math.floor(ms / 86400000);
-    const h = Math.floor(ms % 86400000 / 3600000);
-    const m = Math.floor(ms % 3600000 / 60000);
-    const s = Math.floor(ms % 60000 / 1000);
-    if (d > 0) return `${d}d ${h}h ${m}m`;
-    if (h > 0) return `${h}h ${m}m ${s}s`;
-    return `${m}m ${s}s`;
-  }
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  const nextColMatch = COL_MATCHES.find(m => m.dt.getTime() > now);
-  const msToNext = nextColMatch ? nextColMatch.dt.getTime() - now : null;
-  function scheduleNotifications() {
-    if (typeof Notification === 'undefined') {
-      alert('Tu navegador no soporta notificaciones. Usa Chrome en Android o Safari en iOS.');
-      return;
-    }
-    Notification.requestPermission().then(perm => {
-      setNotifPerm(perm);
-      if (perm === 'granted') {
-        let scheduled = 0;
-        COL_MATCHES.forEach(m => {
-          const alert30 = m.dt.getTime() - 30 * 60 * 1000;
-          const alertNow = m.dt.getTime();
-          const delay30 = alert30 - Date.now();
-          const delay0 = alertNow - Date.now();
-          if (delay30 > 0) {
-            setTimeout(() => {
-              new Notification('⚽ ¡Colombia juega en 30 minutos!', {
-                body: m.label + ' · ' + m.venue,
-                icon: './icon-192.png',
-                tag: 'col30-' + m.dt.getTime(),
-                requireInteraction: true
-              });
-            }, delay30);
-            scheduled++;
-          }
-          if (delay0 > 0) {
-            setTimeout(() => {
-              new Notification('🔴 ¡Comienza Colombia!', {
-                body: m.label + ' · ' + m.venue,
-                icon: './icon-192.png',
-                tag: 'col0-' + m.dt.getTime(),
-                requireInteraction: true
-              });
-            }, delay0);
-          }
-        });
-        setNotifScheduled(scheduled > 0);
-        if (scheduled === 0) alert('No hay partidos de Colombia próximos para alertar.');
-      }
-    });
-  }
-  function calUrl(m) {
-    const s = m.dt.toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
-    const e = new Date(m.dt.getTime() + 7200000).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
-    const base = 'https://calendar.google.com/calendar/render?action=TEMPLATE';
-    return base + '&text=' + encodeURIComponent('Futbol: ' + m.label) + '&dates=' + s + '/' + e + '&location=' + encodeURIComponent(m.venue) + '&details=' + encodeURIComponent('FIFA World Cup 2026 - Grupo K');
-  }
   const TABS = [{
     id: "col",
     label: "🇨🇴 Colombia"
@@ -2406,7 +2405,7 @@ function App() {
     className: "badge badge-gold"
   }, "Elo + Poisson"), /*#__PURE__*/React.createElement("span", {
     className: "badge badge-blue"
-  }, "10,000 simulaciones"), /*#__PURE__*/React.createElement("span", {
+  }, "5,000 simulaciones"), /*#__PURE__*/React.createElement("span", {
     className: "badge badge-green"
   }, "Opta calibrado"), /*#__PURE__*/React.createElement("span", {
     className: "badge badge-gold"
@@ -2555,7 +2554,7 @@ function App() {
     }
   }, t.winPct.toFixed(1), "%"))))))))) : /*#__PURE__*/React.createElement("div", {
     className: "no-sim"
-  }, "Ejecuta la simulaci\xF3n para generar las predicciones estad\xEDsticas.", /*#__PURE__*/React.createElement("br", null), "El cuadro se llenar\xE1 autom\xE1ticamente con los equipos m\xE1s probables", /*#__PURE__*/React.createElement("br", null), "en cada partido basado en 10,000 simulaciones del torneo.")), tab === "grupos" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+  }, "Ejecuta la simulaci\xF3n para generar las predicciones estad\xEDsticas.", /*#__PURE__*/React.createElement("br", null), "El cuadro se llenar\xE1 autom\xE1ticamente con los equipos m\xE1s probables", /*#__PURE__*/React.createElement("br", null), "en cada partido basado en 5,000 simulaciones del torneo.")), tab === "grupos" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "note-box"
   }, "\uD83D\uDCCA ", /*#__PURE__*/React.createElement("strong", null, "Predicciones en dorado"), " = modelo Elo+Poisson \xB7 ", /*#__PURE__*/React.createElement("strong", null, "Campos editables"), " = resultado real \xB7 La tabla actualiza autom\xE1ticamente \xB7 Indicadores: ", /*#__PURE__*/React.createElement("span", {
     style: {
@@ -3001,10 +3000,9 @@ try {
 }
 } catch(err) {
   document.getElementById('loading').innerHTML =
-    '<div style="color:#ef5350;font-family:monospace;padding:20px;word-break:break-all">' +
-    '<div style="font-size:20px;margin-bottom:8px">&#9888; Error al cargar</div>' +
-    '<div style="font-size:12px;opacity:.7">' + err.message + '</div>' +
-    '</div>';
+    '<div style="color:#ef5350;font-family:monospace;padding:20px;word-break:break-word">' +
+    '<b>&#9888; Error al cargar</b><br><br>' + err.message +
+    '<br><br><small>Abre la consola para ver el detalle</small></div>';
   console.error('App error:', err);
 }
 })();
