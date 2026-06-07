@@ -781,10 +781,10 @@ function buildSimTab(){
   return`
   <div class="sim-panel">
     <button class="run-btn" id="run-btn" onclick="runSim()"${ST.simRunning?" disabled":""}>
-      ${ST.simRunning?"SIMULANDO "+ST.simProgress+"%":"▶  EJECUTAR 5,000 SIMULACIONES"}
+      ${ST.simRunning?"SIMULANDO "+ST.simProgress+"%":"▶  EJECUTAR 10,000 SIMULACIONES"}
     </button>
     <div class="prog-wrap" id="prog-wrap" style="${ST.simRunning?"":"display:none"}">
-      <div class="prog-lbl">${ST.simProgress}% · ${Math.round(ST.simProgress/100*5000)} / 5,000 torneos</div>
+      <div class="prog-lbl">${ST.simProgress}% · ${Math.round(ST.simProgress/100*5000)} / 10,000 torneos</div>
       <div class="prog-bar"><div class="prog-fill" id="prog-fill" style="width:${ST.simProgress}%"></div></div>
     </div>
     ${sim?`<div class="top5">${sim.table.slice(0,8).map((t,i)=>`
@@ -936,7 +936,7 @@ function render(){
       <div class="hdr-sub">Simulación Monte Carlo + Tracker Integrado</div>
       <div class="hdr-badges">
         <span class="badge badge-g">Elo + Poisson</span>
-        <span class="badge badge-b">5,000 simulaciones</span>
+        <span class="badge badge-b">10,000 simulaciones</span>
         <span class="badge badge-g">48 selecciones · 104 partidos</span>
       </div>
       <div class="hdr-tools">
@@ -1046,7 +1046,7 @@ function runSim(){
   if(ST.simRunning)return;
   ST.simRunning=true;ST.simProgress=0;ST.simData=null;
   const wins={},finals={},semis={},r8c={},groupPos={};
-  const TOTAL=5000,CHUNK=250;
+  const TOTAL=10000,CHUNK=400;
   let done=0;
   const runBtn=document.getElementById("run-btn");
   const progWrap=document.getElementById("prog-wrap");
