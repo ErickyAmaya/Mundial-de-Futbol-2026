@@ -52,11 +52,13 @@ body{background:var(--bg);color:var(--text);font-family:'Outfit',system-ui,sans-
 .content{padding:12px;max-width:1100px;margin:0 auto}
 .tab-panel{display:none}.tab-panel.active{display:block}
 /* GROUPS */
-.grp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.grp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:10px}
 .grp-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.grp-col{border-color:rgba(253,216,53,.35)!important}
+.grp-col .grp-head{background:rgba(253,216,53,.1)!important}
 .grp-head{padding:8px 12px;background:var(--goldl);border-bottom:1px solid rgba(232,180,0,.1);
   display:flex;align-items:center;gap:8px}
-.grp-letter{font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--gold);line-height:1}
+.grp-letter{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--gold);line-height:1}
 .grp-info{font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase}
 .grp-pred{font-size:9px;color:rgba(232,180,0,.5)}
 /* STANDINGS */
@@ -562,7 +564,7 @@ const ST={
   simRunning:false,
   simProgress:0,
   savedAt:null,
-  openMatches:{}
+  openMatches:{"K":true}
 };
 function loadState(){
   try{
@@ -633,7 +635,7 @@ function buildGroupCard(letter){
       ${accDot(acc)}
     </div>`;
   }).join("");
-  return`<div class="grp-card" id="gc-${letter}">
+  return`<div class="grp-card${letter==="K"?" grp-col":""}" id="gc-${letter}">
     <div class="grp-head">
       <div class="grp-letter">G·${letter}</div>
       <div><div class="grp-info">Grupo ${letter}</div>${predLine}</div>
@@ -694,6 +696,18 @@ function buildKOCard(m,isFinal){
 function buildColombiaTab(){
   const now=Date.now();
   const next=COL_DTS.find(m=>m.dt.getTime()>now);
+  // Group K standings
+  const kSt=getStandings("K");
+  const kTeams=GRUPOS["K"];
+  const kStRows=kSt.map((t,i)=>{
+    const dg=t.dg||0;
+    const cls=i===0?"row-q1":i===1?"row-q2":i===2?"row-q3":"";
+    return`<tr class="${cls}"><td><div class="tc"><span>${f(t.name)}</span><span style="font-weight:600">${esc(t.name)}</span></div></td>
+      <td>${t.pj||0}</td><td>${t.v||0}</td><td>${t.e||0}</td><td>${t.d||0}</td>
+      <td>${t.gf||0}</td><td>${t.gc||0}</td>
+      <td class="${dg>0?"dg-p":dg<0?"dg-n":""}">${dg>0?"+":""}${dg}</td>
+      <td class="pts">${t.pts||0}</td></tr>`;
+  }).join("");
   const msLeft=next?next.dt.getTime()-now:null;
   function fmt(ms){
     if(!ms||ms<=0)return null;
@@ -721,7 +735,16 @@ function buildColombiaTab(){
   </div>
 
   <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:3px;color:var(--gold);margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid rgba(232,180,0,.15)">
-    Fase de Grupos — Grupo K
+    Grupo K — Posiciones
+  </div>
+  <div style="background:var(--bg2);border:1px solid rgba(253,216,53,.2);border-radius:8px;overflow:hidden;margin-bottom:14px">
+    <table class="st-tbl"><thead><tr>
+      <th style="text-align:left;padding-left:10px">Equipo</th>
+      <th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>GF</th><th>GC</th><th>DG</th><th>Pts</th>
+    </tr></thead><tbody>${kStRows}</tbody></table>
+  </div>
+  <div style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:3px;color:var(--gold);margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid rgba(232,180,0,.15)">
+    Partidos de Colombia
   </div>
   ${COL_DTS.map((m,i)=>{
     const miMap=[1,5,2][i];
@@ -913,7 +936,11 @@ function buildTabContent(){
     return`<div style="font-size:11px;color:var(--muted);margin-bottom:10px;padding:7px 11px;background:rgba(255,255,255,.03);border-radius:6px;border-left:2px solid rgba(232,180,0,.25)">
       📊 Dorado=predicción modelo · Edita el resultado real · Tabla actualiza automáticamente
     </div>
-    <div class="grp-grid">${LETTERS.map(g=>buildGroupCard(g)).join("")}</div>
+    <div style="margin-bottom:8px;display:flex;gap:8px">
+      <button onclick="toggleAllMatches(true)" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--muted);cursor:pointer">▾ Expandir todos</button>
+      <button onclick="toggleAllMatches(false)" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--muted);cursor:pointer">▸ Colapsar todos</button>
+    </div>
+    <div class="grp-grid">${["K",...LETTERS.filter(g=>g!=="K")].map(g=>buildGroupCard(g)).join("")}</div>
     <div class="b3-box" style="margin-top:10px">
       <div class="b3-title">🥉 Mejores 8 Terceros (de resultados ingresados)</div>
       <div class="b3-list">${b3.filter(t=>t.name!=="?").length>0
@@ -1033,6 +1060,10 @@ function setTab(id){
   render();
 }
 
+function toggleAllMatches(open){
+  LETTERS.forEach(g=>{ST.openMatches[g]=open;});
+  render();
+}
 function toggleMatches(letter){
   ST.openMatches[letter]=!ST.openMatches[letter];
   const list=document.querySelector(`#gc-${letter} .matches-list`);
