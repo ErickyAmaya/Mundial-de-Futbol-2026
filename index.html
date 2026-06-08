@@ -564,7 +564,7 @@ const ST={
   simRunning:false,
   simProgress:0,
   savedAt:null,
-  openMatches:{"K":true}
+  openMatches:{}
 };
 function loadState(){
   try{
@@ -635,7 +635,7 @@ function buildGroupCard(letter){
       ${accDot(acc)}
     </div>`;
   }).join("");
-  return`<div class="grp-card${letter==="K"?" grp-col":""}" id="gc-${letter}">
+  return`<div class="grp-card" id="gc-${letter}">
     <div class="grp-head">
       <div class="grp-letter">G·${letter}</div>
       <div><div class="grp-info">Grupo ${letter}</div>${predLine}</div>
@@ -940,7 +940,7 @@ function buildTabContent(){
       <button onclick="toggleAllMatches(true)" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--muted);cursor:pointer">▾ Expandir todos</button>
       <button onclick="toggleAllMatches(false)" style="font-size:11px;padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--muted);cursor:pointer">▸ Colapsar todos</button>
     </div>
-    <div class="grp-grid">${["K",...LETTERS.filter(g=>g!=="K")].map(g=>buildGroupCard(g)).join("")}</div>
+    <div class="grp-grid">${LETTERS.map(g=>buildGroupCard(g)).join("")}</div>
     <div class="b3-box" style="margin-top:10px">
       <div class="b3-title">🥉 Mejores 8 Terceros (de resultados ingresados)</div>
       <div class="b3-list">${b3.filter(t=>t.name!=="?").length>0
