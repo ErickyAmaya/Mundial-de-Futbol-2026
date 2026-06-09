@@ -515,11 +515,15 @@ function resolveKOTeam(slot,allSt,b3assign,koWinMap){
   }
   if(slot.t==="ko")return koWinMap[slot.mid]||"?";
   if(slot.t==="kol"){
-    const sc=ST.koActual[slot.mid];
-    const W=koWinMap;
-    const tA=W[slot.mid+"_a"],tB=W[slot.mid+"_b"];
-    if(sc&&sc[0]!=null&&sc[1]!=null)return sc[0]>sc[1]?tB:tA;
-    return eloOf(tA||"?")>=eloOf(tB||"?")?tB:tA;
+    // Loser of a KO match = the team that did NOT win
+    // buildKOMap stores team A as Wa[mid] and team B as Wb[mid]
+    // We need these from the closure, so use a small lookup trick:
+    const tA=koWinMap["_a_"+slot.mid]||"?";
+    const tB=koWinMap["_b_"+slot.mid]||"?";
+    const winner=koWinMap[slot.mid]||"?";
+    if(tA==="?"||tB==="?") return "?";
+    // The loser is whichever team is NOT the winner
+    return winner===tA ? tB : tA;
   }
   return"?";
 }
@@ -548,6 +552,7 @@ function buildKOMap(){
   ALL_KO.forEach(m=>{
     const a=res(m.a,m.id),b=res(m.b,m.id);
     Wa[m.id]=a;Wb[m.id]=b;
+    W["_a_"+m.id]=a;W["_b_"+m.id]=b;
     const sc=ST.koActual[m.id];
     if(sc&&sc[0]!=null&&sc[1]!=null){
       W[m.id]=sc[0]>sc[1]?a:sc[1]>sc[0]?b:null;
@@ -583,57 +588,148 @@ function computeAccuracy(){
 
 
 /* ── Player award candidates ── */
+/* ═══════════════════════════════════════════════════════════
+   MODELO MULTI-FACTOR PREMIOS INDIVIDUALES
+   Fuentes: Opta Analyst · BetMGM/DraftKings · Al Jazeera Stats
+   ═══════════════════════════════════════════════════════════
+   Factores ponderados:
+   - p_mkt  (35%): probabilidad implícita de mercado de apuestas
+   - gpg    (25%): goles por partido temporada 2025-26 (club)
+   - intl   (15%): ratio goles internacionales / partidos
+   - wc_h   (10%): historial goles en Mundiales
+   - pen    (10%): lanzador de penaltis (más oportunidades)
+   - sim    (5% ): ajuste dinámico por avance del equipo en simulación
+   ═══════════════════════════════════════════════════════════ */
 const PLAYERS = {
   goleador:[
-    {n:"Kylian Mbappé",     t:"Francia",     fg:"🇫🇷"},
-    {n:"Erling Haaland",    t:"Noruega",     fg:"🇳🇴"},
-    {n:"Vinicius Jr",       t:"Brasil",      fg:"🇧🇷"},
-    {n:"Lamine Yamal",      t:"España",      fg:"🇪🇸"},
-    {n:"Cristiano Ronaldo", t:"Portugal",    fg:"🇵🇹"},
-    {n:"Lionel Messi",      t:"Argentina",   fg:"🇦🇷"},
-    {n:"Harry Kane",        t:"Inglaterra",  fg:"🏴󠁧󠁢󠁥󠁮󠁧󠁿"},
-    {n:"Donyell Malen",     t:"Países Bajos",fg:"🇳🇱"},
+    // n=nombre, t=equipo, fg=bandera, p_mkt=prob.mercado(%),
+    // gpg=goles/partido 25-26, ig=goles inter., ip=partidos inter.,
+    // wc=goles mundiales, pen=1 si es lanzador de penaltis
+    {n:"Harry Kane",         t:"Inglaterra",   fg:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",p_mkt:14,gpg:1.20,ig:68, ip:110,wc:6, pen:1,note:"61 goles temporada 25-26, mejor marca de su carrera"},
+    {n:"Kylian Mbappé",      t:"Francia",      fg:"🇫🇷",      p_mkt:16,gpg:0.95,ig:56, ip:96, wc:12,pen:1,note:"Defensor del título, 12 goles en WC"},
+    {n:"Erling Haaland",     t:"Noruega",      fg:"🇳🇴",      p_mkt:11,gpg:0.85,ig:50, ip:50, wc:0, pen:1,note:"16 goles en clasificación, primer Mundial"},
+    {n:"Lionel Messi",       t:"Argentina",    fg:"🇦🇷",      p_mkt:10,gpg:0.81,ig:116,ip:198,wc:13,pen:1,note:"38 años, máximo goleador histórico WC en activo"},
+    {n:"Cristiano Ronaldo",  t:"Portugal",     fg:"🇵🇹",      p_mkt:8, gpg:0.75,ig:140,ip:215,wc:8, pen:1,note:"41 años, Al-Nassr, sigue marcando"},
+    {n:"Lamine Yamal",       t:"España",       fg:"🇪🇸",      p_mkt:9, gpg:0.50,ig:15, ip:30, wc:0, pen:0,note:"Extremo creador, no goleador puro"},
+    {n:"Luis Díaz",          t:"Colombia",     fg:"🇨🇴",      p_mkt:7, gpg:0.52,ig:22, ip:60, wc:0, pen:0,note:"Dark horse, extremo con gol"},
+    {n:"Vinicius Jr",        t:"Brasil",       fg:"🇧🇷",      p_mkt:6, gpg:0.55,ig:30, ip:75, wc:1, pen:0,note:"Explosivo, mejorando registro goleador"},
+    {n:"James Rodríguez",    t:"Colombia",     fg:"🇨🇴",      p_mkt:5, gpg:0.40,ig:28, ip:80, wc:6, pen:0,note:"Bota de Oro 2014, experiencia mundialista"},
+    {n:"Florian Wirtz",      t:"Alemania",     fg:"🇩🇪",      p_mkt:4, gpg:0.55,ig:20, ip:40, wc:0, pen:0,note:"Sensación Bayer Leverkusen"},
   ],
   mvp:[
-    {n:"Lamine Yamal",      t:"España",      fg:"🇪🇸"},
-    {n:"Kylian Mbappé",     t:"Francia",     fg:"🇫🇷"},
-    {n:"Jude Bellingham",   t:"Inglaterra",  fg:"🏴󠁧󠁢󠁥󠁮󠁧󠁿"},
-    {n:"Vinicius Jr",       t:"Brasil",      fg:"🇧🇷"},
-    {n:"Lionel Messi",      t:"Argentina",   fg:"🇦🇷"},
-    {n:"Pedri",             t:"España",      fg:"🇪🇸"},
-    {n:"Florian Wirtz",     t:"Alemania",    fg:"🇩🇪"},
+    // Para MVP: p_mkt=prob.mercado, form=nota de forma actual (1-10), wc_prev=actuaciones WC previas
+    {n:"Lamine Yamal",       t:"España",       fg:"🇪🇸",      p_mkt:12,form:9.5,wc_prev:0,note:"Joya de Barcelona, Euro 2024 Mejor Joven"},
+    {n:"Kylian Mbappé",      t:"Francia",      fg:"🇫🇷",      p_mkt:10,form:9.0,wc_prev:2,note:"42 goles Real Madrid, 12 goles en WC"},
+    {n:"Ousmane Dembélé",    t:"Francia",      fg:"🇫🇷",      p_mkt:10,form:9.2,wc_prev:1,note:"Balón de Oro 2025"},
+    {n:"Harry Kane",         t:"Inglaterra",   fg:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",p_mkt:9, form:9.8,wc_prev:1,note:"61 goles temporada, posible Balón de Oro"},
+    {n:"Lionel Messi",       t:"Argentina",    fg:"🇦🇷",      p_mkt:8, form:8.0,wc_prev:5,note:"Campeón 2022, MVP 2022"},
+    {n:"Vinicius Jr",        t:"Brasil",       fg:"🇧🇷",      p_mkt:7, form:8.5,wc_prev:1,note:"Figura del Real Madrid"},
+    {n:"Jude Bellingham",    t:"Inglaterra",   fg:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",p_mkt:6, form:8.5,wc_prev:1,note:"Motor de Inglaterra"},
+    {n:"Florian Wirtz",      t:"Alemania",     fg:"🇩🇪",      p_mkt:5, form:9.0,wc_prev:0,note:"Revelación Bayer Leverkusen"},
+    {n:"Pedri",              t:"España",       fg:"🇪🇸",      p_mkt:5, form:8.8,wc_prev:1,note:"Corazón del juego español"},
+    {n:"James Rodríguez",    t:"Colombia",     fg:"🇨🇴",      p_mkt:4, form:8.0,wc_prev:1,note:"Mejor jugador WC 2014"},
   ],
   guante:[
-    {n:"Thibaut Courtois",  t:"Bélgica",     fg:"🇧🇪"},
-    {n:"Alisson Becker",    t:"Brasil",      fg:"🇧🇷"},
-    {n:"David Raya",        t:"España",      fg:"🇪🇸"},
-    {n:"Mike Maignan",      t:"Francia",     fg:"🇫🇷"},
-    {n:"Manuel Neuer",      t:"Alemania",    fg:"🇩🇪"},
-    {n:"Jordan Pickford",   t:"Inglaterra",  fg:"🏴󠁧󠁢󠁥󠁮󠁧󠁿"},
+    // p_mkt=prob.mercado, clean_sh=porcentaje de arcos en cero estimado (0-1), saves=nota paradas (1-10)
+    {n:"Emiliano Martínez",  t:"Argentina",    fg:"🇦🇷",      p_mkt:20,clean_sh:0.45,saves:9.5,note:"Defensor título, héroe penaltis 2022"},
+    {n:"Unai Simón",         t:"España",       fg:"🇪🇸",      p_mkt:15,clean_sh:0.48,saves:8.8,note:"Portero del equipo favorito"},
+    {n:"Alisson Becker",     t:"Brasil",       fg:"🇧🇷",      p_mkt:13,clean_sh:0.44,saves:9.2,note:"Elite mundial, Liverpool"},
+    {n:"Mike Maignan",       t:"Francia",      fg:"🇫🇷",      p_mkt:12,clean_sh:0.46,saves:9.0,note:"AC Milan, remplazó brillante a Lloris"},
+    {n:"Jordan Pickford",    t:"Inglaterra",   fg:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",p_mkt:10,clean_sh:0.43,saves:8.5,note:"Experiencia, penaltis Euro 2020"},
+    {n:"Diogo Costa",        t:"Portugal",     fg:"🇵🇹",      p_mkt:9, clean_sh:0.42,saves:8.7,note:"Especialista penaltis, subiendo en mercados"},
+    {n:"Thibaut Courtois",   t:"Bélgica",      fg:"🇧🇪",      p_mkt:7, clean_sh:0.41,saves:9.3,note:"Real Madrid, recuperado de lesión"},
+    {n:"Manuel Neuer",       t:"Alemania",     fg:"🇩🇪",      p_mkt:5, clean_sh:0.40,saves:8.4,note:"Leyenda, 39 años"},
   ]
 };
 
-function playerProb(candidates, simData){
-  // Weight candidates by their team's tournament win probability
-  const scores = candidates.map(c=>{
-    const teamWin = simData?.table?.find(t=>t.team===c.t)?.winPct || (eloOf(c.t)/20);
-    return {...c, score: teamWin};
+/* ── Modelo multi-factor para Goleador ── */
+function scorerProb(candidates, simData){
+  const{champ,sub,tercero}=teamAwardProb(simData);
+  // Juegos esperados por equipo en simulación (proxy: winPct → profundidad)
+  function expectedGames(team){
+    const row=simData?.table?.find(t=>t.team===team);
+    if(!row) return 4; // mínimo: 3 grupos + 1 KO
+    // 3 grupos + probabilidades KO: r32,oct,qf,sf,final
+    return 3 + (row.r8Pct/100)*1 + (row.semiPct/100)*1 + (row.finalPct/100)*1 + (row.winPct/100)*1;
+  }
+  const scored = candidates.map(c=>{
+    const eg = expectedGames(c.t);
+    const mkt   = c.p_mkt * 0.35;
+    const form  = Math.min(c.gpg, 1.2) / 1.2 * 25 * 0.25;  // normalizado sobre Kane(1.20)
+    const intl  = (c.ig / Math.max(c.ip,1)) * 50 * 0.15;    // goles per cap normalizado
+    const wc_h  = Math.min(c.wc, 12) / 12 * 10 * 0.10;      // historial WC (max Mbappé=12)
+    const pen_b = c.pen * 2.5 * 0.10;                         // bonus penalti
+    const adv   = (eg / 7) * 5 * 0.05;                        // profundidad torneo
+    const raw = mkt + form + intl + wc_h + pen_b + adv;
+    return{...c, raw, debug:{mkt,form,intl,wc_h,pen_b,adv}};
   });
-  const total = scores.reduce((s,c)=>s+c.score, 0) || 1;
-  return scores.map(c=>({...c, prob: Math.round(c.score/total*100)}))
+  const total = scored.reduce((s,c)=>s+c.raw,0)||1;
+  return scored.map(c=>({...c,prob:Math.round(c.raw/total*100)}))
     .sort((a,b)=>b.prob-a.prob);
 }
 
+/* ── Modelo multi-factor para MVP ── */
+function mvpProb(candidates, simData){
+  const{champ,sub,tercero}=teamAwardProb(simData);
+  const scored = candidates.map(c=>{
+    const teamWin = simData?.table?.find(t=>t.team===c.t)?.winPct||0;
+    const mkt     = c.p_mkt * 0.40;
+    const form_s  = c.form / 10 * 20 * 0.30;
+    const history = Math.min(c.wc_prev, 2) / 2 * 5 * 0.10;
+    const champB  = c.t===champ?4: c.t===sub?2: c.t===tercero?1:0;
+    const raw = mkt + form_s + history + champB;
+    return{...c, raw};
+  });
+  const total = scored.reduce((s,c)=>s+c.raw,0)||1;
+  return scored.map(c=>({...c,prob:Math.round(c.raw/total*100)}))
+    .sort((a,b)=>b.prob-a.prob);
+}
+
+/* ── Modelo multi-factor para Guante de Oro ── */
+function gloveProb(candidates, simData){
+  const{champ,sub,tercero}=teamAwardProb(simData);
+  const scored = candidates.map(c=>{
+    const teamSemi = simData?.table?.find(t=>t.team===c.t)?.semiPct||0;
+    const mkt      = c.p_mkt * 0.40;
+    const defense  = c.clean_sh * 30 * 0.30;   // limpieza defensiva del equipo
+    const saves_s  = c.saves / 10 * 15 * 0.20;
+    const advB     = (teamSemi/100) * 5 * 0.10;
+    const raw = mkt + defense + saves_s + advB;
+    return{...c, raw};
+  });
+  const total = scored.reduce((s,c)=>s+c.raw,0)||1;
+  return scored.map(c=>({...c,prob:Math.round(c.raw/total*100)}))
+    .sort((a,b)=>b.prob-a.prob);
+}
+
+/* ── Dispatcher: elige modelo según id del premio ── */
+function playerProb(id, simData){
+  if(id==="goleador") return scorerProb(PLAYERS.goleador, simData);
+  if(id==="mvp")      return mvpProb(PLAYERS.mvp, simData);
+  if(id==="guante")   return gloveProb(PLAYERS.guante, simData);
+  return [];
+}
+
 function teamAwardProb(simData){
-  if(!simData) return {champ:"?",sub:"?",tercero:"?"};
-  const t=simData.table;
-  const champ  = t[0]?.team||"?";
-  const sub    = t.filter(x=>x.team!==champ).sort((a,b)=>b.finalPct-a.finalPct)[0]?.team||"?";
-  const tercero= t.filter(x=>x.team!==champ&&x.team!==sub).sort((a,b)=>b.semiPct-a.semiPct)[0]?.team||"?";
-  return{champ,sub,tercero,
-    champPct:(t[0]?.winPct||0).toFixed(1),
-    subPct:(t.find(x=>x.team===sub)?.finalPct||0).toFixed(1),
-    terceroPct:(t.find(x=>x.team===tercero)?.semiPct||0).toFixed(1)};
+  // Derive from actual predicted bracket — coherent with the KO map
+  const{W,Wa,Wb}=buildKOMap();
+  const sim=simData;
+
+  // Final: M104
+  const finA=Wa["M104"]||"?", finB=Wb["M104"]||"?";
+  const champ  = eloOf(finA)>=eloOf(finB)?finA:finB;  // predicted winner
+  const sub    = champ===finA?finB:finA;               // predicted runner-up
+
+  // Third place: M103
+  const tercero = W["M103"]||"?";
+
+  // Probabilities from simulation if available
+  const t=sim?.table||[];
+  const champPct  = t.find(x=>x.team===champ)?.winPct?.toFixed(1)||"—";
+  const subPct    = t.find(x=>x.team===sub)?.finalPct?.toFixed(1)||"—";
+  const terceroPct= t.find(x=>x.team===tercero)?.semiPct?.toFixed(1)||"—";
+
+  return{champ,sub,tercero,champPct,subPct,terceroPct};
 }
 
 /* ═══════════════ STATE ═══════════════ */
@@ -968,7 +1064,7 @@ function buildAwardsSection(){
   }
 
   function playerCard(id, icon, name){
-    const cands = playerProb(PLAYERS[id]||[], sim);
+    const cands = playerProb(id, sim);
     const pred  = cands[0]||{n:"?",fg:"⬜",t:"",prob:0};
     const actual = awards[id]||"";
     const match  = actual && actual.toLowerCase()===pred.n.toLowerCase();
@@ -977,7 +1073,7 @@ function buildAwardsSection(){
       <div class="award-body">
         <div class="award-pred">
           <div>
-            <div class="award-pred-lbl">Predicción modelo</div>
+            <div class="award-pred-lbl">Opta/BetMGM + simulación</div>
             <div class="award-pred-val">${pred.fg} ${esc(pred.n)} <span style="font-size:11px;color:var(--muted)">${esc(pred.t)}</span></div>
           </div>
           <div class="award-pred-prob">${pred.prob}%</div>
@@ -995,7 +1091,7 @@ function buildAwardsSection(){
           <div class="cand-row">
             <span>${c.fg}</span>
             <span style="flex:1;font-weight:600">${esc(c.n)}</span>
-            <span style="color:var(--muted);font-size:10px">${esc(c.t)}</span>
+            <span style="color:var(--muted);font-size:10px">${esc(c.t)}</span><span style="font-size:9px;color:rgba(255,255,255,.25);margin-left:4px;font-style:italic">${c.note?esc(c.note.slice(0,30))+(c.note.length>30?"…":""):""}</span>
             <div class="cand-bar-bg"><div class="cand-bar" style="width:${c.prob}%"></div></div>
             <span class="cand-pct">${c.prob}%</span>
           </div>`).join("")}
