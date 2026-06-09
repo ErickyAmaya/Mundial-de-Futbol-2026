@@ -654,7 +654,7 @@ function loadState(){
     if(d.koActual)ST.koActual=d.koActual;
     if(d.simData)ST.simData=d.simData;
     if(d.savedAt)ST.savedAt=d.savedAt;
-    if(d.actualAwards)Object.assign(ST.actualAwards,d.actualAwards);
+    if(d.actualAwards)ST.actualAwards=Object.assign({campeon:"",sub:"",tercero:"",goleador:"",mvp:"",guante:""},d.actualAwards);
   }catch(e){}
 }
 function saveState(){
@@ -941,7 +941,7 @@ function buildKOPhaseTab(phase){
 function buildAwardsSection(){
   const sim = ST.simData;
   const ta  = teamAwardProb(sim);
-  const awards = ST.actualAwards;
+  const awards = ST.actualAwards || {campeon:"",sub:"",tercero:"",goleador:"",mvp:"",guante:""};
 
   function teamCard(id, icon, name, predTeam, predPct){
     const actual = awards[id]||"";
@@ -1033,7 +1033,6 @@ function buildFinalTab(){
   const{Wa:Wa3,Wb:Wb3}=buildKOMap();
   const{exact,corr,wrong,pend,tot,pct}=computeAccuracy();
   return`
-  ${buildAwardsSection()}
   <div class="final-banner">
     <div style="font-size:10px;letter-spacing:3px;text-transform:uppercase;color:rgba(232,180,0,.5);margin-bottom:6px">
       Gran Final · MetLife Stadium, N.Jersey · 19 Jul 2026
@@ -1091,7 +1090,7 @@ const TAB_LIST=[
   {id:"r16",label:"Octavos"},
   {id:"qf",label:"Cuartos"},
   {id:"sf",label:"Semis"},
-  {id:"final",label:"🏆 Final"}
+  {id:"premios",label:"🎖 Premios"},{id:"final",label:"🏆 Final"}
 ];
 
 function buildTabContent(){
@@ -1118,6 +1117,7 @@ function buildTabContent(){
     </div>`;
   }
   if(["r32","r16","qf","sf"].includes(t))return buildKOPhaseTab(t);
+  if(t==="premios")return buildAwardsSection();
   if(t==="final")return buildFinalTab();
   return`<div style="color:var(--muted);padding:20px">Pestaña no encontrada</div>`;
 }
