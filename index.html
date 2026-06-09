@@ -184,6 +184,31 @@ body{background:var(--bg);color:var(--text);font-family:'Outfit',system-ui,sans-
 .sum-lbl{font-size:10px;color:var(--muted);margin-bottom:3px}
 .sum-val{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700}
 .ovf{overflow-x:auto}
+.awards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;margin-top:10px}
+.award-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.award-hdr{padding:10px 14px;background:rgba(232,180,0,.07);border-bottom:1px solid rgba(232,180,0,.1);
+  display:flex;align-items:center;gap:8px}
+.award-icon{font-size:22px;line-height:1}
+.award-name{font-family:'Bebas Neue',sans-serif;font-size:17px;letter-spacing:2px;color:var(--gold)}
+.award-body{padding:12px 14px}
+.award-pred{display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;
+  background:rgba(232,180,0,.06);border-radius:6px;border:1px solid rgba(232,180,0,.1)}
+.award-pred-lbl{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:rgba(232,180,0,.5);margin-bottom:2px}
+.award-pred-val{font-size:14px;font-weight:700}
+.award-pred-prob{font-family:"JetBrains Mono",monospace;font-size:12px;color:rgba(232,180,0,.6);margin-left:auto}
+.award-actual-lbl{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.award-input{width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border);
+  background:rgba(255,255,255,.06);color:var(--text);font-size:13px;font-weight:600;
+  font-family:"Outfit",sans-serif;outline:none}
+.award-input:focus{border-color:rgba(232,180,0,.5);background:rgba(232,180,0,.06)}
+.award-candidates{margin-top:8px}
+.award-cand-lbl{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.cand-row{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:12px;border-bottom:1px solid rgba(255,255,255,.04)}
+.cand-row:last-child{border-bottom:none}
+.cand-bar-bg{flex:1;height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
+.cand-bar{height:100%;border-radius:2px;background:var(--gold)}
+.cand-pct{font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--muted);min-width:35px;text-align:right}
+
 </style>
 </head>
 <body>
@@ -556,6 +581,61 @@ function computeAccuracy(){
   return{exact,corr,wrong,pend,tot,pct:tot>0?Math.round((exact+corr)/tot*100):null};
 }
 
+
+/* ── Player award candidates ── */
+const PLAYERS = {
+  goleador:[
+    {n:"Kylian Mbappé",     t:"Francia",     fg:"🇫🇷"},
+    {n:"Erling Haaland",    t:"Noruega",     fg:"🇳🇴"},
+    {n:"Vinicius Jr",       t:"Brasil",      fg:"🇧🇷"},
+    {n:"Lamine Yamal",      t:"España",      fg:"🇪🇸"},
+    {n:"Cristiano Ronaldo", t:"Portugal",    fg:"🇵🇹"},
+    {n:"Lionel Messi",      t:"Argentina",   fg:"🇦🇷"},
+    {n:"Harry Kane",        t:"Inglaterra",  fg:"🏴󠁧󠁢󠁥󠁮󠁧󠁿"},
+    {n:"Donyell Malen",     t:"Países Bajos",fg:"🇳🇱"},
+  ],
+  mvp:[
+    {n:"Lamine Yamal",      t:"España",      fg:"🇪🇸"},
+    {n:"Kylian Mbappé",     t:"Francia",     fg:"🇫🇷"},
+    {n:"Jude Bellingham",   t:"Inglaterra",  fg:"🏴󠁧󠁢󠁥󠁮󠁧󠁿"},
+    {n:"Vinicius Jr",       t:"Brasil",      fg:"🇧🇷"},
+    {n:"Lionel Messi",      t:"Argentina",   fg:"🇦🇷"},
+    {n:"Pedri",             t:"España",      fg:"🇪🇸"},
+    {n:"Florian Wirtz",     t:"Alemania",    fg:"🇩🇪"},
+  ],
+  guante:[
+    {n:"Thibaut Courtois",  t:"Bélgica",     fg:"🇧🇪"},
+    {n:"Alisson Becker",    t:"Brasil",      fg:"🇧🇷"},
+    {n:"David Raya",        t:"España",      fg:"🇪🇸"},
+    {n:"Mike Maignan",      t:"Francia",     fg:"🇫🇷"},
+    {n:"Manuel Neuer",      t:"Alemania",    fg:"🇩🇪"},
+    {n:"Jordan Pickford",   t:"Inglaterra",  fg:"🏴󠁧󠁢󠁥󠁮󠁧󠁿"},
+  ]
+};
+
+function playerProb(candidates, simData){
+  // Weight candidates by their team's tournament win probability
+  const scores = candidates.map(c=>{
+    const teamWin = simData?.table?.find(t=>t.team===c.t)?.winPct || (eloOf(c.t)/20);
+    return {...c, score: teamWin};
+  });
+  const total = scores.reduce((s,c)=>s+c.score, 0) || 1;
+  return scores.map(c=>({...c, prob: Math.round(c.score/total*100)}))
+    .sort((a,b)=>b.prob-a.prob);
+}
+
+function teamAwardProb(simData){
+  if(!simData) return {champ:"?",sub:"?",tercero:"?"};
+  const t=simData.table;
+  const champ  = t[0]?.team||"?";
+  const sub    = t.filter(x=>x.team!==champ).sort((a,b)=>b.finalPct-a.finalPct)[0]?.team||"?";
+  const tercero= t.filter(x=>x.team!==champ&&x.team!==sub).sort((a,b)=>b.semiPct-a.semiPct)[0]?.team||"?";
+  return{champ,sub,tercero,
+    champPct:(t[0]?.winPct||0).toFixed(1),
+    subPct:(t.find(x=>x.team===sub)?.finalPct||0).toFixed(1),
+    terceroPct:(t.find(x=>x.team===tercero)?.semiPct||0).toFixed(1)};
+}
+
 /* ═══════════════ STATE ═══════════════ */
 const ST={
   tab:"col",
@@ -574,6 +654,7 @@ function loadState(){
     if(d.koActual)ST.koActual=d.koActual;
     if(d.simData)ST.simData=d.simData;
     if(d.savedAt)ST.savedAt=d.savedAt;
+    if(d.actualAwards)Object.assign(ST.actualAwards,d.actualAwards);
   }catch(e){}
 }
 function saveState(){
@@ -581,7 +662,7 @@ function saveState(){
     const t=new Date().toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"});
     ST.savedAt=t;
     localStorage.setItem("wc2026",JSON.stringify({
-      groupActual:ST.groupActual,koActual:ST.koActual,simData:ST.simData,savedAt:t
+      groupActual:ST.groupActual,koActual:ST.koActual,simData:ST.simData,savedAt:t,actualAwards:ST.actualAwards
     }));
     const el=document.getElementById("saved-lbl");
     if(el)el.textContent="💾 Guardado "+t;
@@ -856,6 +937,91 @@ function buildKOPhaseTab(phase){
   <div class="ko-grid">${cfg.matches.map(m=>buildKOCard(m,false)).join("")}</div>`;
 }
 
+
+function buildAwardsSection(){
+  const sim = ST.simData;
+  const ta  = teamAwardProb(sim);
+  const awards = ST.actualAwards;
+
+  function teamCard(id, icon, name, predTeam, predPct){
+    const actual = awards[id]||"";
+    const match  = actual && actual.toLowerCase()===predTeam.toLowerCase();
+    return`<div class="award-card">
+      <div class="award-hdr"><div class="award-icon">${icon}</div><div class="award-name">${name}</div></div>
+      <div class="award-body">
+        <div class="award-pred">
+          <div>
+            <div class="award-pred-lbl">Predicción modelo</div>
+            <div class="award-pred-val">${f(predTeam)} ${esc(predTeam)}</div>
+          </div>
+          <div class="award-pred-prob">${predPct}%</div>
+        </div>
+        <div class="award-actual-lbl">Ganador real</div>
+        <input class="award-input" type="text" placeholder="Ingresa el ganador real..."
+          data-award="${id}" value="${esc(actual)}"
+          style="${actual&&match?"border-color:var(--green)":actual&&!match?"border-color:var(--red)":""}">
+        ${actual?`<div style="font-size:11px;margin-top:5px;color:${match?"var(--green)":"var(--red)"}">
+          ${match?"✓ ¡Acertaste la predicción!":"✗ Diferente a la predicción"}
+        </div>`:""}
+      </div>
+    </div>`;
+  }
+
+  function playerCard(id, icon, name){
+    const cands = playerProb(PLAYERS[id]||[], sim);
+    const pred  = cands[0]||{n:"?",fg:"⬜",t:"",prob:0};
+    const actual = awards[id]||"";
+    const match  = actual && actual.toLowerCase()===pred.n.toLowerCase();
+    return`<div class="award-card">
+      <div class="award-hdr"><div class="award-icon">${icon}</div><div class="award-name">${name}</div></div>
+      <div class="award-body">
+        <div class="award-pred">
+          <div>
+            <div class="award-pred-lbl">Predicción modelo</div>
+            <div class="award-pred-val">${pred.fg} ${esc(pred.n)} <span style="font-size:11px;color:var(--muted)">${esc(pred.t)}</span></div>
+          </div>
+          <div class="award-pred-prob">${pred.prob}%</div>
+        </div>
+        <div class="award-actual-lbl">Ganador real</div>
+        <input class="award-input" type="text" placeholder="Nombre del jugador real..."
+          data-award="${id}" value="${esc(actual)}"
+          style="${actual&&match?"border-color:var(--green)":actual&&!match?"border-color:var(--red)":""}">
+        ${actual?`<div style="font-size:11px;margin-top:5px;color:${match?"var(--green)":"var(--red)"}">
+          ${match?"✓ ¡Acertaste la predicción!":"✗ Diferente a la predicción"}
+        </div>`:""}
+        <div class="award-candidates">
+          <div class="award-cand-lbl">Candidatos</div>
+          ${cands.slice(0,5).map(c=>`
+          <div class="cand-row">
+            <span>${c.fg}</span>
+            <span style="flex:1;font-weight:600">${esc(c.n)}</span>
+            <span style="color:var(--muted);font-size:10px">${esc(c.t)}</span>
+            <div class="cand-bar-bg"><div class="cand-bar" style="width:${c.prob}%"></div></div>
+            <span class="cand-pct">${c.prob}%</span>
+          </div>`).join("")}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  return`
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:3px;color:var(--gold);
+      margin:20px 0 12px;padding-bottom:7px;border-bottom:1px solid rgba(232,180,0,.15)">
+      Premios del Torneo
+    </div>
+    ${!sim?`<div style="font-size:12px;color:var(--muted);padding:8px 11px;background:rgba(255,255,255,.03);border-radius:6px;border-left:2px solid rgba(232,180,0,.2)">
+      Ejecuta la simulación para ver las predicciones personalizadas de cada premio
+    </div>`:""}
+    <div class="awards-grid">
+      ${teamCard("campeon",  "🏆", "Campeón",       ta.champ,   ta.champPct||"—")}
+      ${teamCard("sub",      "🥈", "Subcampeón",    ta.sub,     ta.subPct||"—")}
+      ${teamCard("tercero",  "🥉", "Tercer Lugar",  ta.tercero, ta.terceroPct||"—")}
+      ${playerCard("goleador","⚽","Goleador")}
+      ${playerCard("mvp",    "⭐", "MVP — Mejor Jugador")}
+      ${playerCard("guante", "🧤", "Guante de Oro")}
+    </div>`;
+}
+
 function buildFinalTab(){
   const{W,Wa,Wb,allSt}=buildKOMap();
   const t1=Wa[FIN.id]||"?",t2=Wb[FIN.id]||"?";
@@ -867,6 +1033,7 @@ function buildFinalTab(){
   const{Wa:Wa3,Wb:Wb3}=buildKOMap();
   const{exact,corr,wrong,pend,tot,pct}=computeAccuracy();
   return`
+  ${buildAwardsSection()}
   <div class="final-banner">
     <div style="font-size:10px;letter-spacing:3px;text-transform:uppercase;color:rgba(232,180,0,.5);margin-bottom:6px">
       Gran Final · MetLife Stadium, N.Jersey · 19 Jul 2026
@@ -1009,6 +1176,17 @@ function bindEvents(){
       saveState();
       rebuildAccBar();
     });
+  });
+  // Award inputs
+  document.querySelectorAll(".award-input[data-award]").forEach(inp=>{
+    inp.addEventListener("input",e=>{
+      ST.actualAwards[e.target.dataset.award]=e.target.value.trim();
+      saveState();
+      // Re-render award section only
+      const sec=document.querySelector(".awards-grid");
+      if(sec){sec.closest("div[style*=\'margin:20px\']") && render();}
+    });
+    inp.addEventListener("change",()=>render());
   });
   // KO note inputs
   document.querySelectorAll(".note-in[data-ko-note]").forEach(inp=>{
