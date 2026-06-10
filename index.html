@@ -371,6 +371,69 @@ const FIN={id:"M104",lb:"🏆 FINAL",a:{t:"ko",mid:"M101"},b:{t:"ko",mid:"M102"}
 const THIRD={id:"M103",lb:"3° Lugar",a:{t:"kol",mid:"M101"},b:{t:"kol",mid:"M102"}};
 const ALL_KO=[...R32,...R16,...QF,...SF,THIRD,FIN];
 
+
+/* ═══════════════════════════════════════════════════════════
+   MODELO DIXON-COLES — Parámetros ataque/defensa por equipo
+   att: fuerza atacante (+ = mejor que promedio)
+   def: debilidad defensiva (- = mejor defensa, concede menos)
+   Fuentes: RotoWire proyecciones 2026, xG qualifying, Opta Analyst
+   España proyectada: 2.53 goles/partido (grupos) · defensa más sólida
+   Francia: 1.97 goles/partido · Noruega (Haaland): 1.53 goles
+   ═══════════════════════════════════════════════════════════ */
+const RATINGS={
+  "España":         {att:+0.60,def:-0.60}, // RotoWire: 2.53 goles/j, defensa más sólida
+  "Francia":        {att:+0.42,def:-0.25}, // RotoWire: 1.97 goles/j
+  "Brasil":         {att:+0.55,def:-0.12}, // Ataque creativo, defensa a veces expuesta
+  "Argentina":      {att:+0.35,def:-0.42}, // Eficiente, Dibu Martinez
+  "Alemania":       {att:+0.45,def:-0.18}, // Alto presing
+  "Portugal":       {att:+0.40,def:-0.20},
+  "Inglaterra":     {att:+0.35,def:-0.38}, // Solidez defensiva
+  "Países Bajos":   {att:+0.38,def:-0.18},
+  "Noruega":        {att:+0.44,def:+0.05}, // RotoWire: 1.53 goles/j, Haaland efecto
+  "Bélgica":        {att:+0.22,def:-0.18},
+  "Colombia":       {att:+0.25,def:-0.12}, // Díaz, James, buen mediocampo
+  "Uruguay":        {att:+0.20,def:-0.28}, // Defensa uruguaya tradicional
+  "Croacia":        {att:+0.18,def:-0.25}, // Disciplinada
+  "Marruecos":      {att:+0.18,def:-0.32}, // Mejor defensa África
+  "Japón":          {att:+0.22,def:-0.18},
+  "Suiza":          {att:+0.15,def:-0.35}, // Solo 2 goles concedidos en 6 partidos de clasificación
+  "Senegal":        {att:+0.20,def:-0.10},
+  "México":         {att:+0.12,def:-0.08},
+  "Estados Unidos": {att:+0.08,def:-0.10},
+  "Canadá":         {att:+0.05,def:-0.10},
+  "Ecuador":        {att:+0.12,def:-0.08},
+  "Austria":        {att:+0.10,def:-0.05},
+  "Turquía":        {att:+0.10,def:-0.05},
+  "Australia":      {att:+0.05,def:-0.05},
+  "Argelia":        {att:+0.05,def:-0.02},
+  "Escocia":        {att:+0.02,def:-0.05},
+  "Paraguay":       {att:+0.00,def:-0.10},
+  "Costa de Marfil":{att:+0.10,def:+0.00},
+  "Corea del Sur":  {att:+0.10,def:-0.02},
+  "Ghana":          {att:+0.05,def:+0.02},
+  "Irán":           {att:-0.02,def:-0.08},
+  "Suecia":         {att:+0.05,def:-0.02},
+  "Chequia":        {att:+0.00,def:-0.05},
+  "Bosnia":         {att:+0.00,def:+0.00},
+  "Egipto":         {att:+0.02,def:-0.02},
+  "Arabia Saudí":   {att:-0.02,def:-0.02},
+  "Iraq":           {att:-0.05,def:+0.00},
+  "RD Congo":       {att:-0.05,def:+0.02},
+  "Uzbekistán":     {att:-0.12,def:+0.08},
+  "Jordania":       {att:-0.18,def:+0.12},
+  "Jamaica":        {att:-0.15,def:+0.10},
+  "Haití":          {att:-0.60,def:+0.55},
+  "Qatar":          {att:-0.45,def:+0.42},
+  "Cabo Verde":     {att:-0.25,def:+0.20},
+  "Curazao":        {att:-0.50,def:+0.50},
+  "Sudáfrica":      {att:-0.10,def:+0.10},
+  "Panamá":         {att:-0.20,def:+0.08},
+  "Nueva Zelanda":  {att:-0.18,def:+0.12},
+  "Bolivia":        {att:-0.25,def:+0.18},
+  "Túnez":          {att:-0.05,def:+0.05},
+};
+function getRating(t){return RATINGS[t]||{att:0,def:0};}
+
 /* ═══════════════ SIMULATION ENGINE ═══════════════ */
 function poisson(l){
   if(l<=0)return 0;
@@ -379,16 +442,26 @@ function poisson(l){
   do{k++;p*=Math.random();}while(p>L&&k<20);
   return k-1;
 }
-function simGoals(eA,eB){
-  return[poisson(Math.exp(0.223+(eA-eB)/800)),poisson(Math.exp(0.223+(eB-eA)/800))];
+function simGoals(tA,tB){
+  // Dixon-Coles blended model: 50% Elo + 50% ataque/defensa por equipo
+  const rA=getRating(tA),rB=getRating(tB);
+  const d=eloOf(tA)-eloOf(tB);
+  const homeA=HOME[tA]?0.10:0, homeB=HOME[tB]?0.10:0;
+  const lA=Math.exp(0.223+d/800*0.5+(rA.att+rB.def)*0.5+homeA);
+  const lB=Math.exp(0.223-d/800*0.5+(rB.att+rA.def)*0.5+homeB);
+  return[poisson(lA),poisson(lB)];
 }
 function simKO(tA,tB){
-  const eA=eloOf(tA),eB=eloOf(tB);
-  let[a,b]=simGoals(eA,eB);
+  const rA=getRating(tA),rB=getRating(tB);
+  const d=eloOf(tA)-eloOf(tB);
+  let[a,b]=simGoals(tA,tB);
   if(a!==b)return a>b?tA:tB;
-  const[ea,eb]=[poisson(Math.exp(0.223+(eA-eB)/800)/3),poisson(Math.exp(0.223+(eB-eA)/800)/3)];
+  // Prórroga: misma fórmula × 1/3
+  const lAet=Math.exp(0.223+d/800*0.5+(rA.att+rB.def)*0.5)/3;
+  const lBet=Math.exp(0.223-d/800*0.5+(rB.att+rA.def)*0.5)/3;
+  const[ea,eb]=[poisson(lAet),poisson(lBet)];
   if(ea!==eb)return(a+ea)>(b+eb)?tA:tB;
-  return Math.random()<0.5+0.04*Math.tanh((eA-eB)/300)?tA:tB;
+  return Math.random()<0.5+0.04*Math.tanh(d/300)?tA:tB;
 }
 function sortSt(teams,s){
   return[...teams].sort((a,b)=>{
@@ -401,7 +474,7 @@ function simGroup(g){
   const ts=GRUPOS[g],s={};
   ts.forEach(t=>{s[t]={v:0,e:0,d:0,gf:0,gc:0};});
   PAIRS.forEach(([i,j])=>{
-    const[gA,gB]=simGoals(eloOf(ts[i]),eloOf(ts[j]));
+    const[gA,gB]=simGoals(ts[i],ts[j]);
     s[ts[i]].gf+=gA;s[ts[i]].gc+=gB;s[ts[j]].gf+=gB;s[ts[j]].gc+=gA;
     if(gA>gB){s[ts[i]].v++;s[ts[j]].d++;}
     else if(gB>gA){s[ts[j]].v++;s[ts[i]].d++;}
@@ -474,9 +547,17 @@ function getActualBest3(allSt){
     .sort((a,b)=>b.pts-a.pts||b.dg-a.dg||b.gf-a.gf).slice(0,8);
 }
 function predScore(tA,tB){
-  const lA=Math.exp(0.223+(eloOf(tA)-eloOf(tB))/800);
-  const lB=Math.exp(0.223+(eloOf(tB)-eloOf(tA))/800);
-  return[Math.round(lA),Math.round(lB)];
+  // Usa el mismo modelo Dixon-Coles que la simulación
+  const rA=getRating(tA),rB=getRating(tB);
+  const d=eloOf(tA)-eloOf(tB);
+  const homeA=HOME[tA]?0.10:0,homeB=HOME[tB]?0.10:0;
+  const lA=Math.exp(0.223+d/800*0.5+(rA.att+rB.def)*0.5+homeA);
+  const lB=Math.exp(0.223-d/800*0.5+(rB.att+rA.def)*0.5+homeB);
+  // Bonus para mismatches grandes
+  const bonus=Math.max(0,(d-350)/250)*0.5;
+  const s1=Math.round(lA+bonus);
+  const s2=Math.round(lB*0.65);
+  return[Math.max(0,s1),Math.max(0,s2)];
 }
 function winProb(tA,tB){
   const d=eloOf(tA)-eloOf(tB);
